@@ -3,6 +3,7 @@ module Main where
 import Control.Exception
 import Control.Monad
 import Data.Aeson (encode)
+import Data.Monoid
 import System.IO
 import qualified Data.ByteString.Lazy as Lazy
 
@@ -25,14 +26,31 @@ main = do
 startEmptySession :: Options -> EmptyOptions -> IO ()
 startEmptySession Options{..} EmptyOptions{..} = do
     input   <- newStream stdin
-    bracket (initSession optInitParams optConfig) shutdownSession $ \session ->
+    bracket (initSession optInitParams optConfig) shutdownSession $ \session -> do
+      updateSession session (updateCodeGeneration True) ignoreProgress
       forever $ do
         value <- nextInStream input
         case fromJSON value of
          Left err ->
            Lazy.hPut stdout (encode (toJSON (ResponseInvalidRequest err)))
-         Right (RequestUpdateSession upd) ->
-           putStrLn "Not yet implemented"
+         Right (RequestUpdateSession upd) -> do
+           updateSession session (mconcat (map makeSessionUpdate upd)) $ \progress ->
+             print progress
+           putStrLn "Done"
+         Right RequestGetSourceErrors -> do
+           errors <- getSourceErrors session
+           print errors
+  where
+    ignoreProgress :: Progress -> IO ()
+    ignoreProgress _ = return ()
+
+makeSessionUpdate :: RequestSessionUpdate -> IdeSessionUpdate
+makeSessionUpdate (RequestUpdateSourceFile filePath contents) =
+  updateSourceFile filePath contents
+makeSessionUpdate (RequestUpdateSourceFileFromFile filePath) =
+  updateSourceFileFromFile filePath
+makeSessionUpdate (RequestUpdateGhcOpts options) =
+  updateGhcOpts options
 
 startCabalSession :: Options -> CabalOptions -> IO ()
 startCabalSession Options{..} CabalOptions{..} = do

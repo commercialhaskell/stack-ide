@@ -137,14 +137,14 @@ instance Json Request where
 instance Json RequestSessionUpdate where
   grammar = label "SessionUpdate" $
     object $ mconcat [
-          property "sessionUpdate" "updateSourceFile"
+          property "update" "updateSourceFile"
         . fromPrism requestUpdateSourceFile
         . prop "filePath"
         . prop "contents"
-      ,  property "sessionUpdate" "updateSourceFileFromFile"
+      ,  property "update" "updateSourceFileFromFile"
         . fromPrism requestUpdateSourceFileFromFile
         . prop "filePath"
-      ,   property "sessionUpdate" "updateGhcOpts"
+      ,   property "update" "updateGhcOpts"
         . fromPrism requestUpdateGhcOpts
         . prop "options"
       ]

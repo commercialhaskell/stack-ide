@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module IdeSession.Client.CmdLine (
     -- * Types
     Options(..)
@@ -10,6 +11,11 @@ module IdeSession.Client.CmdLine (
 
 import Data.Monoid
 import Options.Applicative
+import System.Directory (getHomeDirectory)
+import System.FilePath
+import System.IO.Unsafe (unsafePerformIO)
+import qualified Options.Applicative.Help.Chunk as Chunk
+import qualified Text.PrettyPrint.ANSI.Leijen   as Doc
 
 import IdeSession
 
@@ -84,18 +90,25 @@ parseInitParams = SessionInitParams
     <*> (defaultTo sessionInitGhcOptions . many . strOption $ mconcat [
             long "ghc-option"
           , metavar "OPT"
-          , help "GHC option to use when initializing the session. Can be used multiple times."
+          , helpDoc . Just $ Doc.vcat [
+                "GHC option to use when initializing the session."
+              , "Can be used multiple times; overrides default if used."
+              ]
           ])
-    <*> (defaultTo sessionInitRelativeIncludes . many . strOption $ mconcat [
+    <*> (defaultTo sessionInitRelativeIncludes . fmap splitSearchPath' . strOption $ mconcat [
             long "include"
-          , metavar "DIR"
-          , help "Include path (relative to session directory). Can be used multiple times."
+          , metavar "PATH"
+          , value ""
+          , help "Include path (relative to session directory)."
           ])
     <*> useDefault sessionInitTargets
     <*> (defaultTo sessionInitRtsOpts . many . strOption $ mconcat [
             long "rts-option"
           , metavar "OPT"
-          , help "RTS option to use when initializing the session. Can be used multiple times."
+          , helpDoc . Just $ Doc.vcat [
+                "RTS option to use when initializing the session."
+              , "Can be used multiple times; overrides default if used."
+              ]
           ])
   where
     useDefault :: (SessionInitParams -> a) -> Parser a
@@ -116,14 +129,23 @@ parseConfig = SessionConfig
           , showDefault
           , help "Directory to use to store the session files"
           ])
-    <*> (defaultTo configExtraPathDirs . many . strOption $ mconcat [
+    <*> (defaultTo configExtraPathDirs . fmap splitSearchPath' . strOption $ mconcat [
             long "path"
-          , metavar "DIR"
-          , help "Additional directory to add to search for tools (ghc, ide-backend-server, etc.). Can be used multiple times."
+          , metavar "PATH"
+          , value ""
+          , help "Additional search path to add to search for tools (ghc, ide-backend-server, etc.)."
           ])
     <*> useDefault configInProcess
     <*> useDefault configGenerateModInfo
-    <*> useDefault configPackageDBStack
+    <*> (fmap mkPackageDBStack . strOption $ mconcat [
+            long "package-db"
+          , metavar "DIR"
+          , value ""
+          , helpDoc . Just $ Doc.vcat [
+                "Path to the package DB to use for the session."
+              , autoWrap "If specified, the session will use a package DB stack consisting of the global package DB and the specified DB."
+              ]
+          ])
     <*> useDefault configLicenseExc
     <*> useDefault configLicenseFixed
     <*> useDefault configLog
@@ -140,6 +162,12 @@ parseConfig = SessionConfig
       case xs of
         [] -> fld defaultSessionConfig
         _  -> xs
+
+    mkPackageDBStack :: String -> PackageDBStack
+    mkPackageDBStack ""  = configPackageDBStack defaultSessionConfig
+    mkPackageDBStack dir = [ GlobalPackageDB
+                           , SpecificPackageDB (expandHomeDir dir)
+                           ]
 
 {-------------------------------------------------------------------------------
   Top-level API
@@ -165,3 +193,27 @@ deriving instance Show SessionConfig
 
 instance Show (a -> b) where
   show _ = "<<function>>"
+
+-- | Version of splitSearchPath that returns the empty list on empty string
+-- and expands home directories.
+splitSearchPath' :: String -> [FilePath]
+splitSearchPath' = map expandHomeDir . split
+  where
+    split "" = []
+    split xs = splitSearchPath xs
+
+-- | Expand home directory
+expandHomeDir :: FilePath -> FilePath
+expandHomeDir path = unsafePerformIO $ do
+    home <- getHomeDirectory
+
+    let expand :: FilePath -> FilePath
+        expand []       = []
+        expand ('~':xs) = home ++ expand xs
+        expand (x:xs)   = x     : expand xs
+
+    return $ expand path
+
+-- | Insert automatic linebreaks
+autoWrap :: String -> Doc.Doc
+autoWrap = Chunk.extractChunk . Chunk.paragraph
