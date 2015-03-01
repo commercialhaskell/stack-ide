@@ -77,6 +77,7 @@ data Response =
   | ResponseGetSourceErrors [SourceError]
   | ResponseGetSpanInfo [(SourceSpan, SpanInfo)]
   | ResponseGetExpTypes [(SourceSpan, Text)]
+  | ResponseInvalidRequest String
   deriving Show
 
 {-------------------------------------------------------------------------------
@@ -163,6 +164,9 @@ instance Json Response where
       ,   property "response" "getExpTypes"
         . fromPrism responseGetExpTypes
         . prop "info"
+      ,   property "response" "invalidRequest"
+        . fromPrism responseInvalidRequest
+        . prop "errorMessage"
       ]
 
 instance Json Progress where
