@@ -27,6 +27,7 @@ module IdeSession.Client.JsonAPI (
     Request(..)
   , RequestSessionUpdate(..)
   , Response(..)
+  , VersionInfo(..)
     -- * JSON API
   , apiDocs
   , toJSON
@@ -61,6 +62,7 @@ data Request =
   | RequestGetSourceErrors
   | RequestGetSpanInfo ModuleName SourceSpan
   | RequestGetExpTypes ModuleName SourceSpan
+  | RequestShutdownSession
   deriving Show
 
 -- | Session updates
@@ -72,12 +74,20 @@ data RequestSessionUpdate =
 
 -- | Messages sent back from the client to the editor
 data Response =
+    -- | Sent on session initialization
+    ResponseWelcome VersionInfo
     -- | Nothing indicates the update completed
-    ResponseSessionUpdate (Maybe Progress)
+  | ResponseUpdateSession (Maybe Progress)
   | ResponseGetSourceErrors [SourceError]
   | ResponseGetSpanInfo [(SourceSpan, SpanInfo)]
   | ResponseGetExpTypes [(SourceSpan, Text)]
   | ResponseInvalidRequest String
+  | ResponseShutdownSession
+  deriving Show
+
+data VersionInfo = VersionInfo {
+    versionInfoClient :: Int
+  }
   deriving Show
 
 {-------------------------------------------------------------------------------
@@ -89,6 +99,7 @@ data Response =
 $(deriveStackPrismsWith prismNameForConstructor ''Request)
 $(deriveStackPrismsWith prismNameForConstructor ''RequestSessionUpdate)
 $(deriveStackPrismsWith prismNameForConstructor ''Response)
+$(deriveStackPrismsWith prismNameForConstructor ''VersionInfo)
 
 $(deriveStackPrismsWith prismNameForConstructor ''EitherSpan)
 $(deriveStackPrismsWith prismNameForConstructor ''IdInfo)
@@ -132,6 +143,8 @@ instance Json Request where
         . fromPrism requestGetExpTypes
         . prop "module"
         . prop "span"
+      ,   property "request" "shutdownSession"
+        . fromPrism requestShutdownSession
       ]
 
 instance Json RequestSessionUpdate where
@@ -141,7 +154,7 @@ instance Json RequestSessionUpdate where
         . fromPrism requestUpdateSourceFile
         . prop "filePath"
         . prop "contents"
-      ,  property "update" "updateSourceFileFromFile"
+      ,   property "update" "updateSourceFileFromFile"
         . fromPrism requestUpdateSourceFileFromFile
         . prop "filePath"
       ,   property "update" "updateGhcOpts"
@@ -152,8 +165,11 @@ instance Json RequestSessionUpdate where
 instance Json Response where
   grammar = label "Response" $
     object $ mconcat [
-          property "response" "sessionUpdate"
-        . fromPrism responseSessionUpdate
+          property "response" "welcome"
+        . fromPrism responseWelcome
+        . prop "version"
+      ,   property "response" "sessionUpdate"
+        . fromPrism responseUpdateSession
         . optProp "progress"
       ,   property "response" "getSourceErrors"
         . fromPrism responseGetSourceErrors
@@ -167,7 +183,15 @@ instance Json Response where
       ,   property "response" "invalidRequest"
         . fromPrism responseInvalidRequest
         . prop "errorMessage"
+      ,   property "response" "shutdownSession"
+        . fromPrism responseShutdownSession
       ]
+
+instance Json VersionInfo where
+  grammar = label "VersionInfo" $
+    object $
+        fromPrism versionInfo
+      . prop "client"
 
 instance Json Progress where
   grammar = label "Progress" $
@@ -194,7 +218,7 @@ instance Json EitherSpan where
       ]
 
 instance Json SourceSpan where
-  grammar = label "ProperSpan" $
+  grammar = label "SourceSpan" $
     object $
         fromPrism sourceSpan
       . prop "filePath"
@@ -290,6 +314,7 @@ apiDocs = renderDeclarationSourceFile $ interfaces [
     SomeGrammar (grammar :: Grammar Val (Value :- ()) (Request              :- ()))
   , SomeGrammar (grammar :: Grammar Val (Value :- ()) (RequestSessionUpdate :- ()))
   , SomeGrammar (grammar :: Grammar Val (Value :- ()) (Response             :- ()))
+  , SomeGrammar (grammar :: Grammar Val (Value :- ()) (VersionInfo          :- ()))
     -- ide-backend types
   , SomeGrammar (grammar :: Grammar Val (Value :- ()) (EitherSpan           :- ()))
   , SomeGrammar (grammar :: Grammar Val (Value :- ()) (IdInfo               :- ()))
