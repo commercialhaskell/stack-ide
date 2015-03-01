@@ -15,13 +15,15 @@ cabal-version:       >=1.10
 executable ide-backend-client
   main-is:             IdeSession/Client.hs
   -- other-modules:
-  build-depends:       base        >= 4.5 && < 5,
-                       aeson               >= 0.7 && < 0.9,
-                       ide-backend         >= 0.9 && < 1.0,
-                       JsonGrammar         >= 1.0 && < 1.1,
-                       language-typescript >= 0.0 && < 0.1,
-                       stack-prism         >= 0.1 && < 0.2,
-                       text                >= 1.1 && < 1.2
+  build-depends:       base                >= 4.5  && < 5,
+                       aeson               >= 0.7  && < 0.9,
+                       bytestring          >= 0.10 && < 0.11,
+                       ide-backend         >= 0.9  && < 1.0,
+                       JsonGrammar         >= 1.0  && < 1.1,
+                       language-typescript >= 0.0  && < 0.1,
+                       stack-prism         >= 0.1  && < 0.2,
+                       text                >= 1.1  && < 1.2,
+                       utf8-string         >= 0.3  && < 0.4
   hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options:         -Wall -fno-warn-orphans
