@@ -40,9 +40,7 @@ startCabalSession Options{..} CabalOptions{..} = do
 -- This should be incremented whenever we make a change that editors might need
 -- to know about.
 ideBackendClientVersion :: VersionInfo
-ideBackendClientVersion = VersionInfo {
-      versionInfoClient = 1
-    }
+ideBackendClientVersion = VersionInfo 0 1 0
 
 {-------------------------------------------------------------------------------
   Main loop
@@ -90,10 +88,12 @@ mainLoop session = do
             putEnc $ ResponseGetSourceErrors errors
             loop
           Right (RequestGetSpanInfo mod span) -> do
-            putEnc $ ResponseGetSpanInfo (spanInfo mod span)
+            let mkInfo (span', info) = ResponseSpanInfo info span'
+            putEnc $ ResponseGetSpanInfo $ map mkInfo $ spanInfo mod span
             loop
           Right (RequestGetExpTypes mod span) -> do
-            putEnc $ ResponseGetExpTypes (expTypes mod span)
+            let mkInfo (span', info) = ResponseExpType info span'
+            putEnc $ ResponseGetExpTypes $ map mkInfo $ expTypes mod span
             loop
           Right RequestShutdownSession ->
             putEnc $ ResponseShutdownSession
@@ -103,6 +103,11 @@ mainLoop session = do
     ignoreProgress :: Progress -> IO ()
     ignoreProgress _ = return ()
 
+-- | Output a JSON value
+--
+-- We separate JSON values in the output by newlines, so that editors have a
+-- means to split the input into separate values. (The parser on the Haskell
+-- side is a lot more sophisticated and deals with whitespace properly.)
 putEnc :: Json a => a -> IO ()
 putEnc = Lazy.hPutStrLn stdout . encode . toJSON
 

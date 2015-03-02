@@ -27,6 +27,8 @@ module IdeSession.Client.JsonAPI (
     Request(..)
   , RequestSessionUpdate(..)
   , Response(..)
+  , ResponseSpanInfo(..)
+  , ResponseExpType(..)
   , VersionInfo(..)
     -- * JSON API
   , apiDocs
@@ -79,15 +81,25 @@ data Response =
     -- | Nothing indicates the update completed
   | ResponseUpdateSession (Maybe Progress)
   | ResponseGetSourceErrors [SourceError]
-  | ResponseGetSpanInfo [(SourceSpan, SpanInfo)]
-  | ResponseGetExpTypes [(SourceSpan, Text)]
+  | ResponseGetSpanInfo [ResponseSpanInfo]
+  | ResponseGetExpTypes [ResponseExpType]
   | ResponseInvalidRequest String
   | ResponseShutdownSession
   deriving Show
 
-data VersionInfo = VersionInfo {
-    versionInfoClient :: Int
-  }
+data ResponseSpanInfo =
+    ResponseSpanInfo SpanInfo SourceSpan
+  deriving Show
+
+data ResponseExpType =
+    ResponseExpType Text SourceSpan
+  deriving Show
+
+-- | Client version
+--
+-- Standard versioning applies (major, minor, patch)
+data VersionInfo =
+    VersionInfo Int Int Int
   deriving Show
 
 {-------------------------------------------------------------------------------
@@ -99,6 +111,8 @@ data VersionInfo = VersionInfo {
 $(deriveStackPrismsWith prismNameForConstructor ''Request)
 $(deriveStackPrismsWith prismNameForConstructor ''RequestSessionUpdate)
 $(deriveStackPrismsWith prismNameForConstructor ''Response)
+$(deriveStackPrismsWith prismNameForConstructor ''ResponseSpanInfo)
+$(deriveStackPrismsWith prismNameForConstructor ''ResponseExpType)
 $(deriveStackPrismsWith prismNameForConstructor ''VersionInfo)
 
 $(deriveStackPrismsWith prismNameForConstructor ''EitherSpan)
@@ -191,7 +205,9 @@ instance Json VersionInfo where
   grammar = label "VersionInfo" $
     object $
         fromPrism versionInfo
-      . prop "client"
+      . prop "major"
+      . prop "minor"
+      . prop "patch"
 
 instance Json Progress where
   grammar = label "Progress" $
@@ -293,16 +309,25 @@ instance Json PackageId where
       . optProp "version"
       . prop    "packageKey"
 
-instance Json SpanInfo where
-  grammar = label "SpanInfo" $
+instance Json ResponseSpanInfo where
+  grammar = label "ResponseSpanInfo" $
     object $ mconcat [
           property "isQuasiQuote" (literal (Aeson.Bool False))
-        . fromPrism spanId
+        . fromPrism (responseSpanInfo . spanId)
         . prop "idInfo"
+        . prop "span"
       ,   property "isQuasiQuote" (literal (Aeson.Bool True))
-        . fromPrism spanQQ
+        . fromPrism (responseSpanInfo . spanQQ)
         . prop "idInfo"
+        . prop "span"
       ]
+
+instance Json ResponseExpType where
+  grammar = label "ResponseExpType" $
+    object $
+        fromPrism responseExpType
+      . prop "type"
+      . prop "span"
 
 {-------------------------------------------------------------------------------
   Top-level API
@@ -314,6 +339,8 @@ apiDocs = renderDeclarationSourceFile $ interfaces [
     SomeGrammar (grammar :: Grammar Val (Value :- ()) (Request              :- ()))
   , SomeGrammar (grammar :: Grammar Val (Value :- ()) (RequestSessionUpdate :- ()))
   , SomeGrammar (grammar :: Grammar Val (Value :- ()) (Response             :- ()))
+  , SomeGrammar (grammar :: Grammar Val (Value :- ()) (ResponseSpanInfo     :- ()))
+  , SomeGrammar (grammar :: Grammar Val (Value :- ()) (ResponseExpType      :- ()))
   , SomeGrammar (grammar :: Grammar Val (Value :- ()) (VersionInfo          :- ()))
     -- ide-backend types
   , SomeGrammar (grammar :: Grammar Val (Value :- ()) (EitherSpan           :- ()))
@@ -327,7 +354,6 @@ apiDocs = renderDeclarationSourceFile $ interfaces [
   , SomeGrammar (grammar :: Grammar Val (Value :- ()) (SourceError          :- ()))
   , SomeGrammar (grammar :: Grammar Val (Value :- ()) (SourceErrorKind      :- ()))
   , SomeGrammar (grammar :: Grammar Val (Value :- ()) (SourceSpan           :- ()))
-  , SomeGrammar (grammar :: Grammar Val (Value :- ()) (SpanInfo             :- ()))
   ]
 
 toJSON :: Json a => a -> Value

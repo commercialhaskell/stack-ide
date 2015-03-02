@@ -6,11 +6,9 @@ Example interaction:
 
 ``` javascript
 // ide-backend-client sends welcome message and provides its version
-< { "response": "welcome"
-< , "version": {
-<     "client": 1
-<   }
-< }
+{ "response": "welcome"
+, "version": { "minor": 1, "major": 0, "patch": 0 }
+}
 
 // editor requests to load a source file
 > { "request": "updateSession"
@@ -55,45 +53,43 @@ Example interaction:
 > }
 
 // client responds with the information
-< {
-<   "response":"getSpanInfo",
-<   "info":[
-<     [
-<       {
-<         "toColumn":4,
-<         "fromLine":3,
-<         "filePath":"t/A.hs",
-<         "toLine":3,
-<         "fromColumn":1
+< {  
+<   "response": "getSpanInfo",
+<   "info": [  
+<     {  
+<       "span": {  
+<         "toColumn": 4,
+<         "fromLine": 3,
+<         "filePath": "t/A.hs",
+<         "toLine": 3,
+<         "fromColumn": 1
 <       },
-<       {
-<         "isQuasiQuote":false,
-<         "idInfo":{
-<           "scope":{
-<             "scope":"local"
+<       "isQuasiQuote": false,
+<       "idInfo": {  
+<         "scope": {  
+<           "scope": "local"
+<         },
+<         "prop": {  
+<           "nameSpace": "varName",
+<           "name": "foo",
+<           "type": "Int",
+<           "defSpan": {  
+<             "toColumn": 4,
+<             "fromLine": 4,
+<             "filePath": "t/A.hs",
+<             "toLine": 4,
+<             "fromColumn": 1
 <           },
-<           "prop":{
-<             "nameSpace":"varName",
-<             "name":"foo",
-<             "type":"Int",
-<             "defSpan":{
-<               "toColumn":4,
-<               "fromLine":4,
-<               "filePath":"t/A.hs",
-<               "toLine":4,
-<               "fromColumn":1
-<             },
-<             "definedIn":{
-<               "name":"A",
-<               "package":{
-<                 "packageKey":"main",
-<                 "name":"main"
-<               }
+<           "definedIn": {  
+<             "name": "A",
+<             "package": {  
+<               "packageKey": "main",
+<               "name": "main"
 <             }
 <           }
 <         }
 <       }
-<     ]
+<     }
 <   ]
 < }
 
@@ -110,19 +106,19 @@ Example interaction:
 > }
 
 // client responds
-< {
-<   "response":"getExpTypes",
-<   "info":[
-<     [
-<       {
-<         "toColumn":8,
-<         "fromLine":4,
-<         "filePath":"t/A.hs",
-<         "toLine":4,
-<         "fromColumn":7
+< {  
+<   "response": "getExpTypes",
+<   "info":[  
+<     {  
+<       "span": {  
+<         "toColumn": 8,
+<         "fromLine": 4,
+<         "filePath": "t/A.hs",
+<         "toLine": 4,
+<         "fromColumn": 7
 <       },
-<       "Int"
-<     ]
+<       "type": "Int"
+<     }
 <   ]
 < }
 
