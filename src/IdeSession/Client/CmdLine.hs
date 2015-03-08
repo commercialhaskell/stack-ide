@@ -33,6 +33,7 @@ data Options = Options {
 data Command =
     StartEmptySession EmptyOptions
   | StartCabalSession CabalOptions
+  | ListTargets FilePath
   | ShowAPI
   deriving Show
 
@@ -40,8 +41,8 @@ data EmptyOptions = EmptyOptions
   deriving Show
 
 data CabalOptions = CabalOptions {
-    cabalStanza :: Maybe String
-  , cabalFile   :: FilePath
+    cabalTarget :: String
+  , cabalRoot   :: FilePath
   }
   deriving Show
 
@@ -62,7 +63,10 @@ parseCommand = subparser $ mconcat [
         (progDesc "Start an empty session")
     , command "cabal" $ info
         (helper <*> (StartCabalSession <$> parseCabalOptions))
-        (progDesc "Start a Cabal session")
+        (progDesc "Start a Cabal session in directory DIR")
+    , command "targets" $ info
+        (helper <*> (ListTargets <$> argument str (metavar "DIR")))
+        (progDesc "List the available build targets in directory DIR")
     , command "show-api" $ info
         (helper <*> pure ShowAPI)
         (progDesc "Show the JSON API documentation")
@@ -73,12 +77,14 @@ parseEmptyOptions = pure EmptyOptions
 
 parseCabalOptions :: Parser CabalOptions
 parseCabalOptions = CabalOptions
-    <$> (optional . strOption $ mconcat [
-            long "stanza"
+    <$> (strOption $ mconcat [
+            long "target"
           , metavar "NAME"
-          , help "Stanza in the Cabl file"
+          , value "library"
+          , showDefault
+          , help "Target in the Cabal file"
           ])
-    <*> argument str (metavar "FILE")
+    <*> argument str (metavar "DIR")
 
 {-------------------------------------------------------------------------------
   Parsers for ide-backend types
@@ -142,8 +148,8 @@ parseConfig = SessionConfig
           , metavar "DIR"
           , value ""
           , helpDoc . Just $ Doc.vcat [
-                "Path to the package DB to use for the session."
-              , autoWrap "If specified, the session will use a package DB stack consisting of the global package DB and the specified DB."
+                "Package DBs to use for this session."
+              , autoWrap "This takes the form of a search path; the resulting DB stack will consist of the global DB and the specified specific DBs."
               ]
           ])
     <*> useDefault configLicenseExc
@@ -164,10 +170,9 @@ parseConfig = SessionConfig
         _  -> xs
 
     mkPackageDBStack :: String -> PackageDBStack
-    mkPackageDBStack ""  = configPackageDBStack defaultSessionConfig
-    mkPackageDBStack dir = [ GlobalPackageDB
-                           , SpecificPackageDB (expandHomeDir dir)
-                           ]
+    mkPackageDBStack ""   = configPackageDBStack defaultSessionConfig
+    mkPackageDBStack path = GlobalPackageDB
+                          : map SpecificPackageDB (splitSearchPath' path)
 
 {-------------------------------------------------------------------------------
   Top-level API

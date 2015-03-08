@@ -20,6 +20,10 @@ executable ide-backend-client
                        ansi-wl-pprint       >= 0.6  && < 0.7,
                        attoparsec           >= 0.12 && < 0.13,
                        bytestring           >= 0.10 && < 0.11,
+                       -- NOTE: Cabal 1.22 has some backwards incompatible API
+                       -- changes. If we want to support older Cabal we need to
+                       -- introduce a shim.
+                       Cabal                >= 1.22 && < 1.23,
                        directory            >= 1.2  && < 1.3,
                        filepath             >= 1.3  && < 1.4,
                        ide-backend          >= 0.9  && < 1.0,
@@ -40,5 +44,6 @@ executable ide-backend-client
                        RecordWildCards
                        StandaloneDeriving
                        TypeOperators
+                       BangPatterns
   other-extensions:    OverloadedStrings
                        TemplateHaskell

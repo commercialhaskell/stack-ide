@@ -9,10 +9,11 @@ import Language.JsonGrammar (Json)
 import System.IO
 import qualified Data.ByteString.Lazy.Char8 as Lazy
 
-import IdeSession.Client.JsonAPI
-import IdeSession.Client.CmdLine
-import IdeSession.Client.Util.ValueStream
 import IdeSession
+import IdeSession.Client.Cabal
+import IdeSession.Client.CmdLine
+import IdeSession.Client.JsonAPI
+import IdeSession.Client.Util.ValueStream
 
 main :: IO ()
 main = do
@@ -24,6 +25,8 @@ main = do
       startEmptySession opts opts'
     StartCabalSession opts' ->
       startCabalSession opts opts'
+    ListTargets fp ->
+      putEnc =<< listTargets fp
 
 startEmptySession :: Options -> EmptyOptions -> IO ()
 startEmptySession Options{..} EmptyOptions{..} =
@@ -32,8 +35,10 @@ startEmptySession Options{..} EmptyOptions{..} =
             mainLoop
 
 startCabalSession :: Options -> CabalOptions -> IO ()
-startCabalSession Options{..} CabalOptions{..} = do
-  fail "Cabal sessions not yet implemented"
+startCabalSession options cabalOptions = do
+    bracket (initCabalSession options cabalOptions)
+            shutdownSession
+            mainLoop
 
 -- | Version of the client API
 --
