@@ -59,7 +59,7 @@ buildInfoGhcOpts :: LocalBuildInfo -> BuildInfo -> ComponentLocalBuildInfo
 buildInfoGhcOpts lbi bi clbi = concat [
       C.extensionsToFlags (compiler lbi) (defaultExtensions bi)
     , fromMaybe [] (lookup (C.compilerFlavor (compiler lbi)) (options bi))
-    , map (packageIdFlag . fst) (componentPackageDeps clbi)
+    , "-hide-all-packages" : map (packageIdFlag . fst) (componentPackageDeps clbi)
     ]
 
 componentModules :: FilePath -> Component -> IO [FilePath]
