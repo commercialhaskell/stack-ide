@@ -34,11 +34,13 @@ module IdeSession.Client.JsonAPI (
   , apiDocs
   , toJSON
   , fromJSON
+    -- * Outputting JSON values
+  , putEnc
   ) where
 
 import Prelude hiding ((.), id)
 import Control.Category
-import Data.Aeson (Value)
+import Data.Aeson (Value, encode)
 import Data.Maybe (fromMaybe)
 import Data.Monoid
 import Data.StackPrism
@@ -46,10 +48,12 @@ import Data.StackPrism.TH
 import Data.Text (Text)
 import Language.JsonGrammar
 import Language.TypeScript.Pretty (renderDeclarationSourceFile)
-import qualified Data.Aeson.Types          as Aeson
-import qualified Data.ByteString.Lazy      as Lazy
-import qualified Data.ByteString.Lazy.UTF8 as Lazy (toString, fromString)
-import qualified Data.Text                 as Text
+import System.IO
+import qualified Data.Aeson.Types           as Aeson
+import qualified Data.ByteString.Lazy       as Lazy
+import qualified Data.ByteString.Lazy.UTF8  as Lazy (toString, fromString)
+import qualified Data.ByteString.Lazy.Char8 as Lazy.Char8 (hPutStrLn)
+import qualified Data.Text                  as Text
 
 import IdeSession.Client.JsonAPI.Aux
 import IdeSession hiding (idProp)
@@ -62,6 +66,7 @@ import IdeSession hiding (idProp)
 data Request =
     RequestUpdateSession [RequestSessionUpdate]
   | RequestGetSourceErrors
+  | RequestGetLoadedModules
   | RequestGetSpanInfo ModuleName SourceSpan
   | RequestGetExpTypes ModuleName SourceSpan
   | RequestShutdownSession
@@ -81,6 +86,7 @@ data Response =
     -- | Nothing indicates the update completed
   | ResponseUpdateSession (Maybe Progress)
   | ResponseGetSourceErrors [SourceError]
+  | ResponseGetLoadedModules [ModuleName]
   | ResponseGetSpanInfo [ResponseSpanInfo]
   | ResponseGetExpTypes [ResponseExpType]
   | ResponseInvalidRequest String
@@ -149,6 +155,8 @@ instance Json Request where
         . prop "update"
       ,   property "request" "getSourceErrors"
         . fromPrism requestGetSourceErrors
+      ,   property "request" "getLoadedModules"
+        . fromPrism requestGetLoadedModules
       ,   property "request" "getSpanInfo"
         . fromPrism requestGetSpanInfo
         . prop "module"
@@ -188,6 +196,9 @@ instance Json Response where
       ,   property "response" "getSourceErrors"
         . fromPrism responseGetSourceErrors
         . prop "errors"
+      ,   property "response" "getLoadedModules"
+        . fromPrism responseGetLoadedModules
+        . prop "modules"
       ,   property "response" "getSpanInfo"
         . fromPrism responseGetSpanInfo
         . prop "info"
@@ -361,6 +372,14 @@ toJSON = fromMaybe (error "toJSON: Could not serialize") . serialize grammar
 
 fromJSON :: Json a => Value -> Either String a
 fromJSON = Aeson.parseEither (parse grammar)
+
+-- | Output a JSON value
+--
+-- We separate JSON values in the output by newlines, so that editors have a
+-- means to split the input into separate values. (The parser on the Haskell
+-- side is a lot more sophisticated and deals with whitespace properly.)
+putEnc :: Json a => a -> IO ()
+putEnc = Lazy.Char8.hPutStrLn stdout . encode . toJSON
 
 {-------------------------------------------------------------------------------
   Auxiliary grammar definitions

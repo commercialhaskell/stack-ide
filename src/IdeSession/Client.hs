@@ -2,12 +2,9 @@ module Main where
 
 import Prelude hiding (mod, span)
 import Control.Exception
-import Data.Aeson (encode)
 import Data.Monoid
 import Data.Text (Text)
-import Language.JsonGrammar (Json)
 import System.IO
-import qualified Data.ByteString.Lazy.Char8 as Lazy
 
 import IdeSession
 import IdeSession.Client.Cabal
@@ -21,11 +18,14 @@ main = do
   case optCommand of
     ShowAPI ->
       putStrLn apiDocs
-    StartEmptySession opts' ->
+    StartEmptySession opts' -> do
+      putEnc $ ResponseWelcome ideBackendClientVersion
       startEmptySession opts opts'
-    StartCabalSession opts' ->
+    StartCabalSession opts' -> do
+      putEnc $ ResponseWelcome ideBackendClientVersion
       startCabalSession opts opts'
-    ListTargets fp ->
+    ListTargets fp -> do
+      putEnc $ ResponseWelcome ideBackendClientVersion
       putEnc =<< listTargets fp
 
 startEmptySession :: Options -> EmptyOptions -> IO ()
@@ -59,7 +59,6 @@ type QueryExpInfo  = ModuleName -> SourceSpan -> [(SourceSpan, Text)]
 mainLoop :: IdeSession -> IO ()
 mainLoop session = do
     input <- newStream stdin
-    putEnc $ ResponseWelcome ideBackendClientVersion
     updateSession session (updateCodeGeneration True) ignoreProgress
     go input (\_ _ -> []) (\_ _ -> [])
   where
@@ -92,8 +91,13 @@ mainLoop session = do
             errors <- getSourceErrors session
             putEnc $ ResponseGetSourceErrors errors
             loop
+          Right RequestGetLoadedModules -> do
+            mods <- getLoadedModules session
+            putEnc $ ResponseGetLoadedModules mods
+            loop
           Right (RequestGetSpanInfo mod span) -> do
             let mkInfo (span', info) = ResponseSpanInfo info span'
+            spanInfo <- getSpanInfo session
             putEnc $ ResponseGetSpanInfo $ map mkInfo $ spanInfo mod span
             loop
           Right (RequestGetExpTypes mod span) -> do
@@ -107,14 +111,6 @@ mainLoop session = do
 
     ignoreProgress :: Progress -> IO ()
     ignoreProgress _ = return ()
-
--- | Output a JSON value
---
--- We separate JSON values in the output by newlines, so that editors have a
--- means to split the input into separate values. (The parser on the Haskell
--- side is a lot more sophisticated and deals with whitespace properly.)
-putEnc :: Json a => a -> IO ()
-putEnc = Lazy.hPutStrLn stdout . encode . toJSON
 
 makeSessionUpdate :: RequestSessionUpdate -> IdeSessionUpdate
 makeSessionUpdate (RequestUpdateSourceFile filePath contents) =

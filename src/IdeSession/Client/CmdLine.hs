@@ -193,7 +193,6 @@ getCommandLineOptions = execParser opts
   Auxiliary
 -------------------------------------------------------------------------------}
 
-deriving instance Show SessionInitParams
 deriving instance Show SessionConfig
 
 instance Show (a -> b) where

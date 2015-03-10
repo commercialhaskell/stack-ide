@@ -2,7 +2,17 @@
 
 This executable binds against the `ide-backend` library and makes it API available over JSON. It is intended to faciliate integration of `ide-backend` in editors such Atom, Emacs, Sublime, Vim, etc.
 
-Example interaction:
+# Installation instructions
+
+This currently requires the `experimental` branch of `ide-backend`. 
+
+Make sure to compile `ide-backend-client` against the same version of the `Cabal` library that your `cabal-install` uses. For instance, you could add a file `cabal.config`:
+
+```
+constraints: Cabal==1.22.0.0
+```
+
+# Example interaction:
 
 ``` javascript
 // ide-backend-client sends welcome message and provides its version

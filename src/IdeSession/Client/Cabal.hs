@@ -5,6 +5,7 @@ module IdeSession.Client.Cabal (
 
 import Control.Exception
 import Data.Maybe
+import Data.Monoid
 import System.Directory
 import System.FilePath
 
@@ -18,6 +19,7 @@ import qualified Distribution.Simple.Compiler as C
 
 import IdeSession
 import IdeSession.Client.CmdLine
+import IdeSession.Client.JsonAPI
 
 {-------------------------------------------------------------------------------
   Top-level API
@@ -35,14 +37,18 @@ initCabalSession Options{..} CabalOptions{..} = do
     mods <- componentModules cabalRoot comp
     let opts = buildInfoGhcOpts lbi (componentBuildInfo comp) clbi
         initParams = optInitParams {
-            sessionInitTargets    = TargetsInclude mods
-          , sessionInitGhcOptions = opts
+            sessionInitGhcOptions = opts
           }
         config = optConfig {
             configPackageDBStack = unlessOverwritten configPackageDBStack
                                  $ map translatePackageDB (withPackageDB lbi)
           }
-    initSession initParams config
+    session <- initSession initParams config
+    let loadModules = mconcat $ map updateSourceFileFromFile mods
+    updateSession session loadModules (putEnc . ResponseUpdateSession . Just)
+    putEnc $ ResponseUpdateSession Nothing
+    -- dumpIdInfo session
+    return session
   where
     unlessOverwritten :: Eq a => (SessionConfig -> a) -> a -> a
     unlessOverwritten f x = if f optConfig == f defaultSessionConfig
@@ -110,7 +116,7 @@ moduleToFile cabalRoot srcDirs nm =
     go :: [FilePath] -> IO FilePath
     go []     = throwIO $ userError $ "Could not find module " ++ show nm
     go (p:ps) = do exists <- doesFileExist p
-                   if exists then canonicalizePath p
+                   if exists then return p
                              else go ps
 
     exts :: [String]
@@ -126,7 +132,7 @@ locateFile cabalRoot srcDirs fp =
     go :: [FilePath] -> IO FilePath
     go []     = throwIO $ userError $ "Could not find file " ++ show fp
     go (p:ps) = do exists <- doesFileExist p
-                   if exists then canonicalizePath p
+                   if exists then return p
                              else go ps
 
 {-------------------------------------------------------------------------------
