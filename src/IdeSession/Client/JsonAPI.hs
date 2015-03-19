@@ -67,8 +67,8 @@ data Request =
     RequestUpdateSession [RequestSessionUpdate]
   | RequestGetSourceErrors
   | RequestGetLoadedModules
-  | RequestGetSpanInfo ModuleName SourceSpan
-  | RequestGetExpTypes ModuleName SourceSpan
+  | RequestGetSpanInfo SourceSpan
+  | RequestGetExpTypes SourceSpan
   | RequestShutdownSession
   deriving Show
 
@@ -159,11 +159,9 @@ instance Json Request where
         . fromPrism requestGetLoadedModules
       ,   property "request" "getSpanInfo"
         . fromPrism requestGetSpanInfo
-        . prop "module"
         . prop "span"
       ,   property "request" "getExpTypes"
         . fromPrism requestGetExpTypes
-        . prop "module"
         . prop "span"
       ,   property "request" "shutdownSession"
         . fromPrism requestShutdownSession

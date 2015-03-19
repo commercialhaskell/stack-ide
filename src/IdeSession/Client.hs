@@ -60,7 +60,9 @@ mainLoop :: IdeSession -> IO ()
 mainLoop session = do
     input <- newStream stdin
     updateSession session (updateCodeGeneration True) ignoreProgress
-    go input (\_ _ -> []) (\_ _ -> [])
+    spanInfo <- getSpanInfo session -- Might not be empty (for Cabal init)
+    expTypes <- getExpTypes session
+    go input spanInfo expTypes
   where
     -- Main loop
     --
@@ -80,12 +82,12 @@ mainLoop session = do
             putEnc $ ResponseUpdateSession Nothing
 
             errors <- getSourceErrors session
-            if null errors
+            if all ((== KindWarning) . errorKind) errors
               then do
                 spanInfo' <- getSpanInfo session
                 expTypes' <- getExpTypes session
                 go input spanInfo' expTypes'
-              else
+              else do
                 loop
           Right RequestGetSourceErrors -> do
             errors <- getSourceErrors session
@@ -95,15 +97,27 @@ mainLoop session = do
             mods <- getLoadedModules session
             putEnc $ ResponseGetLoadedModules mods
             loop
-          Right (RequestGetSpanInfo mod span) -> do
-            let mkInfo (span', info) = ResponseSpanInfo info span'
-            spanInfo <- getSpanInfo session
-            putEnc $ ResponseGetSpanInfo $ map mkInfo $ spanInfo mod span
+          Right (RequestGetSpanInfo span) -> do
+            fileMap <- getFileMap session
+            case fileMap (spanFilePath span) of
+              Just mod -> do
+                let mkInfo (span', info) = ResponseSpanInfo info span'
+                putEnc $ ResponseGetSpanInfo
+                       $ map mkInfo
+                       $ spanInfo (moduleName mod) span
+              Nothing ->
+                putEnc $ ResponseGetSpanInfo []
             loop
-          Right (RequestGetExpTypes mod span) -> do
-            let mkInfo (span', info) = ResponseExpType info span'
-            putEnc $ ResponseGetExpTypes $ map mkInfo $ expTypes mod span
-            loop
+          Right (RequestGetExpTypes span) -> do
+            fileMap <- getFileMap session
+            case fileMap (spanFilePath span) of
+              Just mod -> do
+                let mkInfo (span', info) = ResponseExpType info span'
+                putEnc $ ResponseGetExpTypes
+                      $ map mkInfo
+                      $ expTypes (moduleName mod) span
+              Nothing ->
+                putEnc $ ResponseGetExpTypes []
           Right RequestShutdownSession ->
             putEnc $ ResponseShutdownSession
       where
