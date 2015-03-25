@@ -64,9 +64,17 @@ buildInfoGhcOpts :: LocalBuildInfo -> BuildInfo -> ComponentLocalBuildInfo
                  -> [String]
 buildInfoGhcOpts lbi bi clbi = concat [
       C.extensionsToFlags (compiler lbi) (defaultExtensions bi)
-    , fromMaybe [] (lookup (C.compilerFlavor (compiler lbi)) (options bi))
+    , excludeOpts (fromMaybe [] (lookup (C.compilerFlavor (compiler lbi)) (options bi)))
     , "-hide-all-packages" : map (packageIdFlag . fst) (componentPackageDeps clbi)
     ]
+
+-- | Exclude optimization flags (-O*) because they conflict with the
+-- GHC interpreter mode. In GHC 7.10 this will be handled with an
+-- explicit exception from GHC, but for now in 7.8 we strip it out.
+excludeOpts :: [String] -> [String]
+excludeOpts = filter (not . looksLikeOpt)
+  where looksLikeOpt ('-':'O':_) = True
+        looksLikeOpt _           = False
 
 componentModules :: FilePath -> Component -> IO [FilePath]
 componentModules cabalRoot comp = do
