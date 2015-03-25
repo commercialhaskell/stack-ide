@@ -70,8 +70,12 @@ buildInfoGhcOpts lbi bi clbi = concat [
     ]
 
 -- | Exclude optimization flags (-O*) because they conflict with the
--- GHC interpreter mode. In GHC 7.10 this will be handled with an
--- explicit exception from GHC, but for now in 7.8 we strip it out.
+-- GHC interpreter mode.
+--
+-- Currently the error from GHC 7.8 is rather misleading (\"bytecode
+-- compiler can't handle unboxed tuple\"). In GHC 7.10 the message
+-- will be improved with an explicit exception from GHC describing the
+-- problem, but in any case we filter out @-O@ to avoid this problem.
 excludeOpts :: [String] -> [String]
 excludeOpts = filter (not . isPrefixOf "-O")
 
