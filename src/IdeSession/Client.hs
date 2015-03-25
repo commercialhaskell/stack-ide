@@ -1,9 +1,12 @@
 module Main where
 
-import Prelude hiding (mod, span)
 import Control.Exception
+import Data.Function
+import Data.List (sortBy)
 import Data.Monoid
+import Data.Ord
 import Data.Text (Text)
+import Prelude hiding (mod, span)
 import System.IO
 
 import IdeSession
@@ -115,6 +118,7 @@ mainLoop session = do
                 let mkInfo (span', info) = ResponseExpType info span'
                 putEnc $ ResponseGetExpTypes
                       $ map mkInfo
+                      $ sortSpans
                       $ expTypes (moduleName mod) span
               Nothing ->
                 putEnc $ ResponseGetExpTypes []
@@ -126,6 +130,20 @@ mainLoop session = do
 
     ignoreProgress :: Progress -> IO ()
     ignoreProgress _ = return ()
+
+-- | We sort the spans from thinnest to thickest. Currently
+-- ide-backend sometimes returns results unsorted, therefore for now
+-- we do the sort here, and in future ide-backend can be changed to do
+-- this.
+sortSpans :: [(SourceSpan,a)] -> [(SourceSpan,a)]
+sortSpans = sortBy (on thinner fst)
+  where thinner x y =
+          comparing (if on (==) spanFromLine x y &&
+                        on (==) spanToLine x y
+                        then \(SourceSpan _ _ s _ e) -> e - s
+                        else \(SourceSpan _ s _ e _) -> e - s)
+                    x
+                    y
 
 makeSessionUpdate :: RequestSessionUpdate -> IdeSessionUpdate
 makeSessionUpdate (RequestUpdateSourceFile filePath contents) =
