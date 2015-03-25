@@ -118,6 +118,7 @@ mainLoop session = do
                       $ expTypes (moduleName mod) span
               Nothing ->
                 putEnc $ ResponseGetExpTypes []
+            loop
           Right RequestShutdownSession ->
             putEnc $ ResponseShutdownSession
       where
