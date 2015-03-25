@@ -4,6 +4,7 @@ module IdeSession.Client.Cabal (
   ) where
 
 import Control.Exception
+import Data.List
 import Data.Maybe
 import Data.Monoid
 import System.Directory
@@ -72,9 +73,7 @@ buildInfoGhcOpts lbi bi clbi = concat [
 -- GHC interpreter mode. In GHC 7.10 this will be handled with an
 -- explicit exception from GHC, but for now in 7.8 we strip it out.
 excludeOpts :: [String] -> [String]
-excludeOpts = filter (not . looksLikeOpt)
-  where looksLikeOpt ('-':'O':_) = True
-        looksLikeOpt _           = False
+excludeOpts = filter (not . isPrefixOf "-O")
 
 componentModules :: FilePath -> Component -> IO [FilePath]
 componentModules cabalRoot comp = do
