@@ -32,7 +32,7 @@ main = do
       putEnc =<< listTargets fp
 
 startEmptySession :: Options -> EmptyOptions -> IO ()
-startEmptySession Options{..} EmptyOptions{..} =
+startEmptySession Options{..} EmptyOptions =
     bracket (initSession optInitParams optConfig)
             shutdownSession
             mainLoop

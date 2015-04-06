@@ -22,6 +22,7 @@
 -- stable, and well documented.
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE KindSignatures #-}
 module IdeSession.Client.JsonAPI (
     -- * Requests
     Request(..)
