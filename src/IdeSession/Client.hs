@@ -1,6 +1,9 @@
+{-# LANGUAGE NamedFieldPuns #-}
 module Main where
 
 import Control.Exception
+import Control.Monad (join, mfilter)
+import Control.Arrow ((***))
 import Data.Function
 import Data.List (sortBy)
 import Data.Monoid
@@ -8,6 +11,8 @@ import Data.Ord
 import Data.Text (Text)
 import Prelude hiding (mod, span)
 import System.IO
+
+import qualified Data.Text as Text
 
 import IdeSession
 import IdeSession.Client.Cabal
@@ -58,6 +63,7 @@ ideBackendClientVersion = VersionInfo 0 1 0
 
 type QuerySpanInfo = ModuleName -> SourceSpan -> [(SourceSpan, SpanInfo)]
 type QueryExpInfo  = ModuleName -> SourceSpan -> [(SourceSpan, Text)]
+type AutoCompInfo  = ModuleName -> String     -> [IdInfo]
 
 mainLoop :: IdeSession -> IO ()
 mainLoop session = do
@@ -65,15 +71,16 @@ mainLoop session = do
     updateSession session (updateCodeGeneration True) ignoreProgress
     spanInfo <- getSpanInfo session -- Might not be empty (for Cabal init)
     expTypes <- getExpTypes session
-    go input spanInfo expTypes
+    autoComplete <- getAutocompletion session
+    go input spanInfo expTypes autoComplete
   where
     -- Main loop
     --
     -- We pass spanInfo and expInfo as argument, which are updated after every
     -- session update (provided that there are no errors). This means that if
     -- the session updates fails we we will the info from the previous update.
-    go :: Stream -> QuerySpanInfo -> QueryExpInfo -> IO ()
-    go input spanInfo expTypes = do
+    go :: Stream -> QuerySpanInfo -> QueryExpInfo -> AutoCompInfo -> IO ()
+    go input spanInfo expTypes autoComplete = do
         value <- nextInStream input
         case fromJSON value of
           Left err -> do
@@ -89,7 +96,8 @@ mainLoop session = do
               then do
                 spanInfo' <- getSpanInfo session
                 expTypes' <- getExpTypes session
-                go input spanInfo' expTypes'
+                autoComplete' <- getAutocompletion session
+                go input spanInfo' expTypes' autoComplete'
               else do
                 loop
           Right RequestGetSourceErrors -> do
@@ -123,10 +131,25 @@ mainLoop session = do
               Nothing ->
                 putEnc $ ResponseGetExpTypes []
             loop
+          Right (RequestGetAutocompletion autocmpletionSpan) -> do
+            fileMap <- getFileMap session
+            case fileMap (autocompletionFilePath autocmpletionSpan) of
+              Just mod -> do
+                let query = (autocompletionPrefix autocmpletionSpan)
+                    splitQualifier = join (***) reverse . break (== '.') . reverse
+                    (prefix, qualifierStr) = splitQualifier query
+                    qualifier = mfilter (not . Text.null) (Just (Text.pack qualifierStr))
+                putEnc $ ResponseGetAutocompletion
+                       $ filter ((== qualifier) . autocompletionQualifier)
+                       $ map idInfoToAutocompletion
+                       $ autoComplete (moduleName mod) prefix
+              Nothing ->
+                putEnc $ ResponseGetAutocompletion []
+            loop
           Right RequestShutdownSession ->
             putEnc $ ResponseShutdownSession
       where
-        loop = go input spanInfo expTypes
+        loop = go input spanInfo expTypes autoComplete
 
     ignoreProgress :: Progress -> IO ()
     ignoreProgress _ = return ()
@@ -144,6 +167,17 @@ sortSpans = sortBy (on thinner fst)
                         else \(SourceSpan _ s _ e _) -> e - s)
                     x
                     y
+
+-- | Construct autocomplete information
+idInfoToAutocompletion :: IdInfo -> AutocompletionInfo
+idInfoToAutocompletion IdInfo{idProp = IdProp{idName, idDefinedIn, idType}, idScope} =
+  AutocompletionInfo definedIn idName qualifier idType
+  where definedIn = moduleName idDefinedIn
+        qualifier = case idScope of
+                     Binder                 -> Nothing
+                     Local{}                -> Nothing
+                     Imported{idImportQual} -> mfilter (not . Text.null) (Just idImportQual)
+                     WiredIn                -> Nothing
 
 makeSessionUpdate :: RequestSessionUpdate -> IdeSessionUpdate
 makeSessionUpdate (RequestUpdateSourceFile filePath contents) =

@@ -31,6 +31,8 @@ module IdeSession.Client.JsonAPI (
   , ResponseSpanInfo(..)
   , ResponseExpType(..)
   , VersionInfo(..)
+  , AutocompletionSpan(..)
+  , AutocompletionInfo(..)
     -- * JSON API
   , apiDocs
   , toJSON
@@ -70,6 +72,7 @@ data Request =
   | RequestGetLoadedModules
   | RequestGetSpanInfo SourceSpan
   | RequestGetExpTypes SourceSpan
+  | RequestGetAutocompletion AutocompletionSpan
   | RequestShutdownSession
   deriving Show
 
@@ -90,6 +93,7 @@ data Response =
   | ResponseGetLoadedModules [ModuleName]
   | ResponseGetSpanInfo [ResponseSpanInfo]
   | ResponseGetExpTypes [ResponseExpType]
+  | ResponseGetAutocompletion [AutocompletionInfo]
   | ResponseInvalidRequest String
   | ResponseShutdownSession
   deriving Show
@@ -101,6 +105,20 @@ data ResponseSpanInfo =
 data ResponseExpType =
     ResponseExpType Text SourceSpan
   deriving Show
+
+data AutocompletionSpan = AutocompletionSpan
+   { autocompletionFilePath :: FilePath
+   , autocompletionPrefix :: String
+   }
+   deriving Show
+
+data AutocompletionInfo = AutocompletionInfo
+   { autocompletionInfoDefinedIn :: Text
+   , autocompletionInfoName :: Text
+   , autocompletionQualifier :: Maybe Text
+   , autocompletionType :: Maybe Text
+   }
+   deriving Show
 
 -- | Client version
 --
@@ -131,6 +149,8 @@ $(deriveStackPrismsWith prismNameForConstructor ''PackageId)
 $(deriveStackPrismsWith prismNameForConstructor ''Progress)
 $(deriveStackPrismsWith prismNameForConstructor ''SourceError)
 $(deriveStackPrismsWith prismNameForConstructor ''SourceSpan)
+$(deriveStackPrismsWith prismNameForConstructor ''AutocompletionSpan)
+$(deriveStackPrismsWith prismNameForConstructor ''AutocompletionInfo)
 $(deriveStackPrismsWith prismNameForConstructor ''SpanInfo)
 
 $(deriveStackPrismsWith prismNameForConstructor ''Maybe)
@@ -164,6 +184,9 @@ instance Json Request where
       ,   property "request" "getExpTypes"
         . fromPrism requestGetExpTypes
         . prop "span"
+      ,   property "request" "getAutocompletion"
+        . fromPrism requestGetAutocompletion
+        . prop "autocomplete"
       ,   property "request" "shutdownSession"
         . fromPrism requestShutdownSession
       ]
@@ -204,6 +227,9 @@ instance Json Response where
       ,   property "response" "getExpTypes"
         . fromPrism responseGetExpTypes
         . prop "info"
+      ,   property "response" "getAutocompletion"
+        . fromPrism responseGetAutocompletion
+        . prop "completions"
       ,   property "response" "invalidRequest"
         . fromPrism responseInvalidRequest
         . prop "errorMessage"
@@ -242,6 +268,22 @@ instance Json EitherSpan where
         fromPrism textSpan   . grammar
       , fromPrism properSpan . grammar
       ]
+
+instance Json AutocompletionSpan where
+  grammar = label "AutocompletionSpan" $
+    object $
+        fromPrism autocompletionSpan
+      . prop "filePath"
+      . prop "prefix"
+
+instance Json AutocompletionInfo where
+  grammar = label "AutocompletionInfo" $
+    object $
+        fromPrism autocompletionInfo
+      . prop "definedIn"
+      . prop "name"
+      . optProp "qualifier"
+      . optProp "type"
 
 instance Json SourceSpan where
   grammar = label "SourceSpan" $
@@ -364,6 +406,8 @@ apiDocs = renderDeclarationSourceFile $ interfaces [
   , SomeGrammar (grammar :: Grammar Val (Value :- ()) (SourceError          :- ()))
   , SomeGrammar (grammar :: Grammar Val (Value :- ()) (SourceErrorKind      :- ()))
   , SomeGrammar (grammar :: Grammar Val (Value :- ()) (SourceSpan           :- ()))
+  , SomeGrammar (grammar :: Grammar Val (Value :- ()) (AutocompletionSpan   :- ()))
+  , SomeGrammar (grammar :: Grammar Val (Value :- ()) (AutocompletionInfo   :- ()))
   ]
 
 toJSON :: Json a => a -> Value
