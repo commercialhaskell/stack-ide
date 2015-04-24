@@ -1,5 +1,13 @@
 {-# LANGUAGE NamedFieldPuns #-}
-module Main where
+{-# LANGUAGE CPP #-}
+module IdeSession.Client
+    ( ClientIO(..)
+    , startEmptySession
+#ifdef USE_CABAL
+    , startCabalSession
+    , sendTargetsList
+#endif
+    ) where
 
 import Control.Exception
 import Control.Monad (join, mfilter)
@@ -11,42 +19,46 @@ import Data.Ord
 import Data.Text (Text)
 import Prelude hiding (mod, span)
 import System.IO
+import Data.Aeson (Value)
 
 import qualified Data.Text as Text
 
 import IdeSession
-import IdeSession.Client.Cabal
 import IdeSession.Client.CmdLine
 import IdeSession.Client.JsonAPI
-import IdeSession.Client.Util.ValueStream
+#ifdef USE_CABAL
+import IdeSession.Client.Cabal
+#endif
 
-main :: IO ()
-main = do
-  opts@Options{..} <- getCommandLineOptions
-  case optCommand of
-    ShowAPI ->
-      putStrLn apiDocs
-    StartEmptySession opts' -> do
-      putEnc $ ResponseWelcome ideBackendClientVersion
-      startEmptySession opts opts'
-    StartCabalSession opts' -> do
-      putEnc $ ResponseWelcome ideBackendClientVersion
-      startCabalSession opts opts'
-    ListTargets fp -> do
-      putEnc $ ResponseWelcome ideBackendClientVersion
-      putEnc =<< listTargets fp
+data ClientIO = ClientIO
+    { putJson :: Value -> IO ()
+    , getJson :: IO Value
+    }
 
-startEmptySession :: Options -> EmptyOptions -> IO ()
-startEmptySession Options{..} EmptyOptions =
+startEmptySession :: ClientIO -> Options -> EmptyOptions -> IO ()
+startEmptySession clientIO Options{..} EmptyOptions = do
+    sendWelcome clientIO
     bracket (initSession optInitParams optConfig)
             shutdownSession
-            mainLoop
+            (mainLoop clientIO)
 
-startCabalSession :: Options -> CabalOptions -> IO ()
-startCabalSession options cabalOptions = do
+#ifdef USE_CABAL
+startCabalSession :: ClientIO -> Options -> CabalOptions -> IO ()
+startCabalSession clientIO options cabalOptions = do
+    sendWelcome clientIO
     bracket (initCabalSession options cabalOptions)
             shutdownSession
-            mainLoop
+            (mainLoop clientIO)
+
+sendTargetsList :: ClientIO -> FilePath -> IO ()
+sendTargetsList clientIO fp = do
+    sendWelcome clientIO
+    putJson clientIO . toJSON =<< listTargets fp
+#endif
+
+sendWelcome :: ClientIO -> IO ()
+sendWelcome clientIO =
+    putJson clientIO $ toJSON $ ResponseWelcome ideBackendClientVersion
 
 -- | Version of the client API
 --
@@ -65,23 +77,22 @@ type QuerySpanInfo = ModuleName -> SourceSpan -> [(SourceSpan, SpanInfo)]
 type QueryExpInfo  = ModuleName -> SourceSpan -> [(SourceSpan, Text)]
 type AutoCompInfo  = ModuleName -> String     -> [IdInfo]
 
-mainLoop :: IdeSession -> IO ()
-mainLoop session = do
-    input <- newStream stdin
-    updateSession session (updateCodeGeneration True) ignoreProgress
-    spanInfo <- getSpanInfo session -- Might not be empty (for Cabal init)
-    expTypes <- getExpTypes session
-    autoComplete <- getAutocompletion session
-    go input spanInfo expTypes autoComplete
+mainLoop :: ClientIO -> IdeSession -> IO ()
+mainLoop clientIO session0 = do
+  updateSession session0 (updateCodeGeneration True) ignoreProgress
+  go session0
   where
-    -- Main loop
-    --
-    -- We pass spanInfo and expInfo as argument, which are updated after every
-    -- session update (provided that there are no errors). This means that if
-    -- the session updates fails we we will the info from the previous update.
-    go :: Stream -> QuerySpanInfo -> QueryExpInfo -> AutoCompInfo -> IO ()
-    go input spanInfo expTypes autoComplete = do
-        value <- nextInStream input
+    putEnc = putJson clientIO . toJSON
+    -- This is called after every session update that doesn't yield
+    -- compile errors.  If there are compile errors, we use the info
+    -- from the previous update.
+    go :: IdeSession -> IO ()
+    go session = do
+      spanInfo <- getSpanInfo session -- Might not be empty (for Cabal init)
+      expTypes <- getExpTypes session
+      autoComplete <- getAutocompletion session
+      fix $ \loop -> do
+        value <- getJson clientIO
         case fromJSON value of
           Left err -> do
             putEnc $ ResponseInvalidRequest err
@@ -90,16 +101,10 @@ mainLoop session = do
             updateSession session (mconcat (map makeSessionUpdate upd)) $ \progress ->
               putEnc $ ResponseUpdateSession (Just progress)
             putEnc $ ResponseUpdateSession Nothing
-
             errors <- getSourceErrors session
             if all ((== KindWarning) . errorKind) errors
-              then do
-                spanInfo' <- getSpanInfo session
-                expTypes' <- getExpTypes session
-                autoComplete' <- getAutocompletion session
-                go input spanInfo' expTypes' autoComplete'
-              else do
-                loop
+              then go session
+              else loop
           Right RequestGetSourceErrors -> do
             errors <- getSourceErrors session
             putEnc $ ResponseGetSourceErrors errors
@@ -148,9 +153,6 @@ mainLoop session = do
             loop
           Right RequestShutdownSession ->
             putEnc $ ResponseShutdownSession
-      where
-        loop = go input spanInfo expTypes autoComplete
-
     ignoreProgress :: Progress -> IO ()
     ignoreProgress _ = return ()
 

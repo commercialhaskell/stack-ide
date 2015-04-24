@@ -12,22 +12,29 @@ build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
 
-executable ide-backend-client
-  main-is:             IdeSession/Client.hs
-  other-modules:       IdeSession.Client.Cabal
+flag use-cabal
+  description: Enable ide-backend-client cabal support
+  default: True
+
+library
+  hs-source-dirs:      src
+  exposed-modules:     IdeSession.Client
                        IdeSession.Client.CmdLine
                        IdeSession.Client.JsonAPI.Aux
                        IdeSession.Client.JsonAPI
                        IdeSession.Client.Util.ValueStream
+  if flag(use-cabal)
+      ghc-options:     -DUSE_CABAL
+      exposed-modules: IdeSession.Client.Cabal
+                       -- NOTE: Cabal 1.22 has some backwards incompatible API
+                       -- changes. If we want to support older Cabal we need to
+                       -- introduce a shim.
+      build-depends:   Cabal                >= 1.22 && < 1.23
   build-depends:       base                 >= 4.5  && < 5,
                        aeson                >= 0.7  && < 0.9,
                        ansi-wl-pprint       >= 0.6  && < 0.7,
                        attoparsec           >= 0.12 && < 0.13,
                        bytestring           >= 0.10 && < 0.11,
-                       -- NOTE: Cabal 1.22 has some backwards incompatible API
-                       -- changes. If we want to support older Cabal we need to
-                       -- introduce a shim.
-                       Cabal                >= 1.22 && < 1.23,
                        directory            >= 1.2  && < 1.3,
                        filepath             >= 1.3  && < 1.5,
                        ide-backend          >= 0.9  && < 1.0,
@@ -37,7 +44,6 @@ executable ide-backend-client
                        stack-prism          >= 0.1  && < 0.2,
                        text                 >= 1.1  && < 1.3,
                        utf8-string          >= 0.3  && < 1.1
-  hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options:         -Wall -fno-warn-orphans
   default-extensions:  DataKinds
@@ -51,3 +57,15 @@ executable ide-backend-client
                        BangPatterns
   other-extensions:    OverloadedStrings
                        TemplateHaskell
+
+executable ide-backend-client
+  hs-source-dirs:      app
+  main-is:             main.hs
+  build-depends:       base                 >= 4.5  && < 5,
+                       aeson                >= 0.7  && < 0.9,
+                       ide-backend-client,
+                       bytestring           >= 0.10 && < 0.11
+  default-language:    Haskell2010
+  ghc-options:         -Wall -fno-warn-orphans
+  if flag(use-cabal)
+      ghc-options:     -DUSE_CABAL

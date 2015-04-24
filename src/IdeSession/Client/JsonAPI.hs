@@ -37,8 +37,6 @@ module IdeSession.Client.JsonAPI (
   , apiDocs
   , toJSON
   , fromJSON
-    -- * Outputting JSON values
-  , putEnc
   ) where
 
 import Prelude hiding ((.), id)
@@ -52,11 +50,10 @@ import Data.Text (Text)
 import Language.JsonGrammar
 import Language.TypeScript.Pretty (renderDeclarationSourceFile)
 import System.IO
-import qualified Data.Aeson.Types           as Aeson
-import qualified Data.ByteString.Lazy       as Lazy
-import qualified Data.ByteString.Lazy.UTF8  as Lazy (toString, fromString)
-import qualified Data.ByteString.Lazy.Char8 as Lazy.Char8 (hPutStrLn)
-import qualified Data.Text                  as Text
+import qualified Data.Aeson.Types          as Aeson
+import qualified Data.ByteString.Lazy      as Lazy
+import qualified Data.ByteString.Lazy.UTF8 as Lazy (toString, fromString)
+import qualified Data.Text                 as Text
 
 import IdeSession.Client.JsonAPI.Aux
 import IdeSession hiding (idProp)
@@ -415,14 +412,6 @@ toJSON = fromMaybe (error "toJSON: Could not serialize") . serialize grammar
 
 fromJSON :: Json a => Value -> Either String a
 fromJSON = Aeson.parseEither (parse grammar)
-
--- | Output a JSON value
---
--- We separate JSON values in the output by newlines, so that editors have a
--- means to split the input into separate values. (The parser on the Haskell
--- side is a lot more sophisticated and deals with whitespace properly.)
-putEnc :: Json a => a -> IO ()
-putEnc = Lazy.Char8.hPutStrLn stdout . encode . toJSON
 
 {-------------------------------------------------------------------------------
   Auxiliary grammar definitions
