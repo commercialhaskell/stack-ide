@@ -4,8 +4,6 @@ This executable binds against the `ide-backend` library and makes it API availab
 
 # Installation instructions
 
-This currently requires the `experimental` branch of `ide-backend`. 
-
 Make sure to compile `ide-backend-client` against the same version of the `Cabal` library that your `cabal-install` uses. For instance, you could add a file `cabal.config`:
 
 ```
