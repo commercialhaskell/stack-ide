@@ -41,7 +41,7 @@ module IdeSession.Client.JsonAPI (
 
 import Prelude hiding ((.), id)
 import Control.Category
-import Data.Aeson (Value, encode)
+import Data.Aeson (Value)
 import Data.Maybe (fromMaybe)
 import Data.Monoid
 import Data.StackPrism
@@ -49,14 +49,14 @@ import Data.StackPrism.TH
 import Data.Text (Text)
 import Language.JsonGrammar
 import Language.TypeScript.Pretty (renderDeclarationSourceFile)
-import System.IO
 import qualified Data.Aeson.Types          as Aeson
 import qualified Data.ByteString.Lazy      as Lazy
 import qualified Data.ByteString.Lazy.UTF8 as Lazy (toString, fromString)
 import qualified Data.Text                 as Text
 
 import IdeSession.Client.JsonAPI.Aux
-import IdeSession hiding (idProp)
+import IdeSession.Types.Public hiding (idProp, Value)
+import IdeSession.Types.Progress
 
 {-------------------------------------------------------------------------------
   Types
