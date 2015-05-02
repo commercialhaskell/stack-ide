@@ -17,6 +17,7 @@ import Distribution.Simple.Configure
 import Distribution.Simple.LocalBuildInfo
 import qualified Distribution.ModuleName      as C
 import qualified Distribution.Simple.Compiler as C
+import Language.Haskell.Extension
 
 import IdeSession
 import IdeSession.Client.CmdLine
@@ -34,7 +35,7 @@ listTargets cabalRoot = do
 initCabalSession :: Options -> CabalOptions -> IO IdeSession
 initCabalSession Options{..} CabalOptions{..} = do
     lbi <- getPersistBuildConfig (cabalRoot </> "dist")
-    (comp, clbi) <- resolveBuildTarget lbi cabalTarget
+    (comp, clbi, exts) <- resolveBuildTarget lbi cabalTarget
     mods <- componentModules cabalRoot comp
     let opts = buildInfoGhcOpts lbi (componentBuildInfo comp) clbi
         initParams = optInitParams {
@@ -45,6 +46,7 @@ initCabalSession Options{..} CabalOptions{..} = do
                                  $ map translatePackageDB (withPackageDB lbi)
           }
     session <- initSession initParams config
+    setGhcOpts session exts
     let loadModules = mconcat $ map updateSourceFileFromFile mods
     updateSession session loadModules (putEnc . ResponseUpdateSession . Just)
     putEnc $ ResponseUpdateSession Nothing
@@ -146,6 +148,18 @@ locateFile cabalRoot srcDirs fp =
                    if exists then return p
                              else go ps
 
+
+-- | Set GHC options.
+setGhcOpts  :: IdeSession -> [Extension] ->  IO ()
+setGhcOpts sess exts =
+  updateSession sess (updateGhcOpts (map showExt exts)) (const (return ()))
+  where showExt :: Extension -> String
+        showExt g =
+          case g of
+            EnableExtension e -> "-X" <> show e
+            DisableExtension e -> "-XNo" <> show e
+            UnknownExtension e -> "-X" <> show e
+
 {-------------------------------------------------------------------------------
   Compute available build targets
 
@@ -172,7 +186,7 @@ availableTargets LocalBuildInfo{..} = go localPkgDescr
 -- This mostly relies on standard Cabal infrastructure, but additionally
 -- supports the "library" target to refer to the library compnent of the package
 -- (Cabal only supports the 'lib:package' syntax).
-resolveBuildTarget :: LocalBuildInfo -> String -> IO (Component, ComponentLocalBuildInfo)
+resolveBuildTarget :: LocalBuildInfo -> String -> IO (Component, ComponentLocalBuildInfo, [Extension])
 resolveBuildTarget lbi@LocalBuildInfo{..} target = do
     buildTargets <- case target of
                       "library"  -> return [BuildTargetComponent CLibName]
@@ -183,8 +197,28 @@ resolveBuildTarget lbi@LocalBuildInfo{..} target = do
       [BuildTargetComponent component] -> do
         let !comp = getComponent               localPkgDescr component
             !clbi = getComponentLocalBuildInfo lbi           component
-        return (comp, clbi)
+        exts <- getExtensions localPkgDescr target
+        return (comp, clbi, exts)
       [BuildTargetModule _component _module] ->
         throwIO $ userError "Unsupported target"
       [BuildTargetFile _component _file] ->
         throwIO $ userError "Unsupported target"
+
+-- | Resolve language extensions for a given buiold target
+--
+-- Loads the list of langauge extensions declared in the `extensions` or
+-- `default-extensions` field of the cabal file for a given build target.
+getExtensions :: PackageDescription -> String -> IO [Extension]
+getExtensions PackageDescription{..} target =
+  let (targetType, targetRest) = break (== ':') target
+      _:targetName = targetRest
+      targetBuildInfo =
+        case targetType of
+          "library" -> fmap libBuildInfo library
+          "executable" -> fmap buildInfo (find ((== targetName) . exeName) executables)
+          "test-suite" -> fmap testBuildInfo (find ((== targetName) . testName) testSuites)
+          "benchmark"  -> fmap benchmarkBuildInfo (find ((== targetName) . benchmarkName) benchmarks)
+          _  -> return mempty
+  in case targetBuildInfo of
+       Just !bi -> return $ usedExtensions bi
+       Nothing  -> throwIO $ userError "Unsupported target"
