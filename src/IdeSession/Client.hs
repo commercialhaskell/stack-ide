@@ -73,10 +73,6 @@ ideBackendClientVersion = VersionInfo 0 1 0
   Assumes the session has been properly initialized
 -------------------------------------------------------------------------------}
 
-type QuerySpanInfo = ModuleName -> SourceSpan -> [(SourceSpan, SpanInfo)]
-type QueryExpInfo  = ModuleName -> SourceSpan -> [(SourceSpan, Text)]
-type AutoCompInfo  = ModuleName -> String     -> [IdInfo]
-
 mainLoop :: ClientIO -> IdeSession -> IO ()
 mainLoop clientIO session0 = do
   updateSession session0 (updateCodeGeneration True) ignoreProgress
