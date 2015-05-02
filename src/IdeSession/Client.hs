@@ -9,17 +9,17 @@ module IdeSession.Client
 #endif
     ) where
 
+import Control.Arrow ((***))
+import Control.Concurrent.Async (async)
 import Control.Exception
 import Control.Monad (join, mfilter)
-import Control.Arrow ((***))
+import Data.Aeson (Value)
 import Data.Function
+import Data.IORef
 import Data.List (sortBy)
 import Data.Monoid
 import Data.Ord
-import Data.Text (Text)
 import Prelude hiding (mod, span)
-import System.IO
-import Data.Aeson (Value)
 
 import qualified Data.Text as Text
 
@@ -76,14 +76,15 @@ ideBackendClientVersion = VersionInfo 0 1 0
 mainLoop :: ClientIO -> IdeSession -> IO ()
 mainLoop clientIO session0 = do
   updateSession session0 (updateCodeGeneration True) ignoreProgress
-  go session0
+  mprocessRef <- newIORef Nothing
+  go session0 mprocessRef
   where
     putEnc = putJson clientIO . toJSON
     -- This is called after every session update that doesn't yield
     -- compile errors.  If there are compile errors, we use the info
     -- from the previous update.
-    go :: IdeSession -> IO ()
-    go session = do
+    go :: IdeSession -> IORef (Maybe (RunActions RunResult)) -> IO ()
+    go session mprocessRef = do
       spanInfo <- getSpanInfo session -- Might not be empty (for Cabal init)
       expTypes <- getExpTypes session
       autoComplete <- getAutocompletion session
@@ -99,7 +100,7 @@ mainLoop clientIO session0 = do
             putEnc $ ResponseUpdateSession Nothing
             errors <- getSourceErrors session
             if all ((== KindWarning) . errorKind) errors
-              then go session
+              then go session mprocessRef
               else loop
           Right RequestGetSourceErrors -> do
             errors <- getSourceErrors session
@@ -147,10 +148,37 @@ mainLoop clientIO session0 = do
               Nothing ->
                 putEnc $ ResponseGetAutocompletion []
             loop
+          Right (RequestRun mn identifier) -> do
+            actions <- runStmt session (Text.unpack mn) (Text.unpack identifier)
+            writeIORef mprocessRef (Just actions)
+            --FIXME: exception handling for this.
+            _ <- async $ fix $ \inputLoop -> do
+              result <- runWait actions
+              case result of
+                Left output -> do
+                  putEnc $ ResponseProcessOutput output
+                  inputLoop
+                Right done -> do
+                  putEnc $ ResponseProcessDone done
+                  writeIORef mprocessRef Nothing
+            loop
+          Right (RequestProcessInput input) -> do
+            mprocess <- readIORef mprocessRef
+            case mprocess of
+              Just actions -> supplyStdin actions input
+              --FIXME: throw exception for this.
+              Nothing -> return ()
+          Right RequestProcessKill -> do
+            mprocess <- readIORef mprocessRef
+            case mprocess of
+              Just actions -> interrupt actions
+              --FIXME: throw exception for this.
+              Nothing -> return ()
           Right RequestShutdownSession ->
             putEnc $ ResponseShutdownSession
     ignoreProgress :: Progress -> IO ()
     ignoreProgress _ = return ()
+
 
 -- | We sort the spans from thinnest to thickest. Currently
 -- ide-backend sometimes returns results unsorted, therefore for now

@@ -33,6 +33,8 @@ module IdeSession.Client.JsonAPI (
   , VersionInfo(..)
   , AutocompletionSpan(..)
   , AutocompletionInfo(..)
+  , VersionInfo(..)
+  , Identifier
     -- * JSON API
   , apiDocs
   , toJSON
@@ -50,6 +52,8 @@ import Data.Text (Text)
 import Language.JsonGrammar
 import Language.TypeScript.Pretty (renderDeclarationSourceFile)
 import qualified Data.Aeson.Types          as Aeson
+import qualified Data.ByteString           as BS
+import qualified Data.ByteString.UTF8      as BS (toString, fromString)
 import qualified Data.ByteString.Lazy      as Lazy
 import qualified Data.ByteString.Lazy.UTF8 as Lazy (toString, fromString)
 import qualified Data.Text                 as Text
@@ -64,12 +68,19 @@ import IdeSession.Types.Progress
 
 -- | Messages sent from the editor to the client
 data Request =
+  -- Update
     RequestUpdateSession [RequestSessionUpdate]
+  -- Query
   | RequestGetSourceErrors
   | RequestGetLoadedModules
   | RequestGetSpanInfo SourceSpan
   | RequestGetExpTypes SourceSpan
   | RequestGetAutocompletion AutocompletionSpan
+  -- Run
+  | RequestRun ModuleName Identifier
+  | RequestProcessInput BS.ByteString
+  | RequestProcessKill
+  -- Misc
   | RequestShutdownSession
   deriving Show
 
@@ -91,6 +102,10 @@ data Response =
   | ResponseGetSpanInfo [ResponseSpanInfo]
   | ResponseGetExpTypes [ResponseExpType]
   | ResponseGetAutocompletion [AutocompletionInfo]
+  -- Run
+  | ResponseProcessOutput BS.ByteString
+  | ResponseProcessDone RunResult
+  -- Misc
   | ResponseInvalidRequest String
   | ResponseShutdownSession
   deriving Show
@@ -124,6 +139,8 @@ data VersionInfo =
     VersionInfo Int Int Int
   deriving Show
 
+type Identifier = Text
+
 {-------------------------------------------------------------------------------
   Stack prisms
 
@@ -149,6 +166,7 @@ $(deriveStackPrismsWith prismNameForConstructor ''SourceSpan)
 $(deriveStackPrismsWith prismNameForConstructor ''AutocompletionSpan)
 $(deriveStackPrismsWith prismNameForConstructor ''AutocompletionInfo)
 $(deriveStackPrismsWith prismNameForConstructor ''SpanInfo)
+$(deriveStackPrismsWith prismNameForConstructor ''RunResult)
 
 $(deriveStackPrismsWith prismNameForConstructor ''Maybe)
 
@@ -184,6 +202,15 @@ instance Json Request where
       ,   property "request" "getAutocompletion"
         . fromPrism requestGetAutocompletion
         . prop "autocomplete"
+      ,   property "request" "run"
+        . fromPrism requestRun
+        . prop "module"
+        . prop "identifier"
+      ,   property "request" "processInput"
+        . fromPrism requestProcessInput
+        . prop "value"
+      ,   property "request" "processKill"
+        . fromPrism requestProcessKill
       ,   property "request" "shutdownSession"
         . fromPrism requestShutdownSession
       ]
@@ -227,6 +254,12 @@ instance Json Response where
       ,   property "response" "getAutocompletion"
         . fromPrism responseGetAutocompletion
         . prop "completions"
+      ,   property "response" "processOutput"
+        . fromPrism responseProcessOutput
+        . prop "value"
+      ,   property "response" "processDone"
+        . fromPrism responseProcessDone
+        . prop "result"
       ,   property "response" "invalidRequest"
         . fromPrism responseInvalidRequest
         . prop "errorMessage"
@@ -378,6 +411,23 @@ instance Json ResponseExpType where
       . prop "type"
       . prop "span"
 
+instance Json RunResult where
+  grammar = label "RunResult" $
+    object $ mconcat [
+        property "status" "ok"
+      . fromPrism runOk
+    ,   property "status" "progException"
+      . fromPrism runProgException
+      . prop "message"
+    ,   property "status" "ghcException"
+      . fromPrism runGhcException
+      . prop "message"
+    ,   property "status" "forceCancelled"
+      . fromPrism runForceCancelled
+    ,   property "status" "break"
+      . fromPrism runBreak
+    ]
+
 {-------------------------------------------------------------------------------
   Top-level API
 -------------------------------------------------------------------------------}
@@ -419,6 +469,7 @@ fromJSON = Aeson.parseEither (parse grammar)
 
 instance Json String          where grammar = string
 instance Json Lazy.ByteString where grammar = lazyByteString
+instance Json BS.ByteString   where grammar = bytestring
 
 -- | Define a grammar by enumerating the possible values
 --
@@ -438,6 +489,10 @@ string = fromPrism (iso Text.unpack Text.pack) . grammar
 -- | Lazy bytestring literal
 lazyByteString :: Grammar Val (Value :- t) (Lazy.ByteString :- t)
 lazyByteString = fromPrism (iso Lazy.fromString Lazy.toString) . grammar
+
+-- | Strict bytestring literal
+bytestring :: Grammar Val (Value :- t) (BS.ByteString :- t)
+bytestring = fromPrism (iso BS.fromString BS.toString) . grammar
 
 -- | Optional property
 optProp :: Json a => Text -> Grammar Obj t (Maybe a :- t)
