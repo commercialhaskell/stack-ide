@@ -53,14 +53,13 @@ import Language.JsonGrammar
 import Language.TypeScript.Pretty (renderDeclarationSourceFile)
 import qualified Data.Aeson.Types          as Aeson
 import qualified Data.ByteString           as BS
-import qualified Data.ByteString.UTF8      as BS (toString, fromString)
 import qualified Data.ByteString.Lazy      as Lazy
-import qualified Data.ByteString.Lazy.UTF8 as Lazy (toString, fromString)
-import qualified Data.Text                 as Text
 
 import IdeSession.Client.JsonAPI.Aux
-import IdeSession.Types.Public hiding (idProp, Value)
+import IdeSession.Client.JsonAPI.Common
+import IdeSession.Client.JsonAPI.Public
 import IdeSession.Types.Progress
+import IdeSession.Types.Public hiding (idProp, Value)
 
 {-------------------------------------------------------------------------------
   Types
@@ -147,37 +146,16 @@ type Identifier = Text
   Stack prisms are just prisms with a special kind of type. See Data.StackPrism.
 -------------------------------------------------------------------------------}
 
-$(deriveStackPrismsWith prismNameForConstructor ''Request)
-$(deriveStackPrismsWith prismNameForConstructor ''RequestSessionUpdate)
-$(deriveStackPrismsWith prismNameForConstructor ''Response)
-$(deriveStackPrismsWith prismNameForConstructor ''ResponseSpanInfo)
-$(deriveStackPrismsWith prismNameForConstructor ''ResponseExpType)
-$(deriveStackPrismsWith prismNameForConstructor ''VersionInfo)
-
-$(deriveStackPrismsWith prismNameForConstructor ''EitherSpan)
-$(deriveStackPrismsWith prismNameForConstructor ''IdInfo)
-$(deriveStackPrismsWith prismNameForConstructor ''IdProp)
-$(deriveStackPrismsWith prismNameForConstructor ''IdScope)
-$(deriveStackPrismsWith prismNameForConstructor ''ModuleId)
-$(deriveStackPrismsWith prismNameForConstructor ''PackageId)
-$(deriveStackPrismsWith prismNameForConstructor ''Progress)
-$(deriveStackPrismsWith prismNameForConstructor ''SourceError)
-$(deriveStackPrismsWith prismNameForConstructor ''SourceSpan)
-$(deriveStackPrismsWith prismNameForConstructor ''AutocompletionSpan)
-$(deriveStackPrismsWith prismNameForConstructor ''AutocompletionInfo)
-$(deriveStackPrismsWith prismNameForConstructor ''SpanInfo)
-$(deriveStackPrismsWith prismNameForConstructor ''RunResult)
-
-$(deriveStackPrismsWith prismNameForConstructor ''Maybe)
-
--- | Apply a prism to the top of the stack
-top :: StackPrism a b -> StackPrism (a :- t) (b :- t)
-top prism = stackPrism (\(a :- t) -> (forward prism a :- t))
-                       (\(b :- t) -> (:- t) `fmap` backward prism b)
-
--- | Construct a stack prism from an isomorphism
-iso :: (a -> b) -> (b -> a) -> StackPrism (a :- t) (b :- t)
-iso f g = top (stackPrism f (Just . g))
+$(fmap concat $ mapM (deriveStackPrismsWith prismNameForConstructor)
+  [ ''Request
+  , ''RequestSessionUpdate
+  , ''Response
+  , ''ResponseSpanInfo
+  , ''ResponseExpType
+  , ''AutocompletionSpan
+  , ''AutocompletionInfo
+  , ''VersionInfo
+  ])
 
 {-------------------------------------------------------------------------------
   Translation to and from JSON
@@ -267,38 +245,6 @@ instance Json Response where
         . fromPrism responseShutdownSession
       ]
 
-instance Json VersionInfo where
-  grammar = label "VersionInfo" $
-    object $
-        fromPrism versionInfo
-      . prop "major"
-      . prop "minor"
-      . prop "patch"
-
-instance Json Progress where
-  grammar = label "Progress" $
-    object $
-        fromPrism progress
-      . prop    "step"
-      . prop    "numSteps"
-      . optProp "parsedMsg"
-      . optProp "origMsg"
-
-instance Json SourceErrorKind where
-  grammar = label "SourceErrorKind" $
-    enumeration [
-        ( KindError      , "error"      )
-      , ( KindWarning    , "warning"    )
-      , ( KindServerDied , "serverDied" )
-      ]
-
-instance Json EitherSpan where
-  grammar = label "EitherSpan" $
-    mconcat [
-        fromPrism textSpan   . grammar
-      , fromPrism properSpan . grammar
-      ]
-
 instance Json AutocompletionSpan where
   grammar = label "AutocompletionSpan" $
     object $
@@ -314,82 +260,6 @@ instance Json AutocompletionInfo where
       . prop "name"
       . optProp "qualifier"
       . optProp "type"
-
-instance Json SourceSpan where
-  grammar = label "SourceSpan" $
-    object $
-        fromPrism sourceSpan
-      . prop "filePath"
-      . prop "fromLine"
-      . prop "fromColumn"
-      . prop "toLine"
-      . prop "toColumn"
-
-instance Json SourceError where
-  grammar = label "SourceError" $
-    object $
-        fromPrism sourceError
-      . prop "kind"
-      . prop "span"
-      . prop "msg"
-
-instance Json IdInfo where
-  grammar = label "IdInfo" $
-    object $
-        fromPrism idInfo
-      . prop "prop"
-      . prop "scope"
-
-instance Json IdProp where
-  grammar = label "IdProp" $
-    object $
-        fromPrism idProp
-      . prop    "name"
-      . prop    "nameSpace"
-      . optProp "type"
-      . prop    "definedIn"
-      . prop    "defSpan"
-      . optProp "homeModule"
-
-instance Json IdScope where
-  grammar = label "IdScope" $
-    object $ mconcat [
-          property "scope" "binder"
-        . fromPrism binder
-      ,   property "scope" "local"
-        . fromPrism local
-      ,   property "scope" "imported"
-        . fromPrism imported
-        . prop "importedFrom"
-        . prop "importSpan"
-        . prop "importQual"
-      ,   property "scope" "wiredIn"
-        . fromPrism wiredIn
-      ]
-
-instance Json IdNameSpace where
-  grammar = label "IdNameSpace" $
-    enumeration [
-        ( VarName   , "varName"   )
-      , ( DataName  , "dataName"  )
-      , ( TvName    , "tvName"    )
-      , ( TcClsName , "tcClsName" )
-      ]
-
-instance Json ModuleId where
-  grammar = label "ModuleId" $
-    object $
-        fromPrism moduleId
-      . prop "name"
-      . prop "package"
-
-instance Json PackageId where
-  grammar = label "PackageId" $
-    object $
-        fromPrism packageId
-      . prop    "name"
-      . optProp "version"
-      . prop    "packageKey"
 
 instance Json ResponseSpanInfo where
   grammar = label "ResponseSpanInfo" $
@@ -411,22 +281,13 @@ instance Json ResponseExpType where
       . prop "type"
       . prop "span"
 
-instance Json RunResult where
-  grammar = label "RunResult" $
-    object $ mconcat [
-        property "status" "ok"
-      . fromPrism runOk
-    ,   property "status" "progException"
-      . fromPrism runProgException
-      . prop "message"
-    ,   property "status" "ghcException"
-      . fromPrism runGhcException
-      . prop "message"
-    ,   property "status" "forceCancelled"
-      . fromPrism runForceCancelled
-    ,   property "status" "break"
-      . fromPrism runBreak
-    ]
+instance Json VersionInfo where
+  grammar = label "VersionInfo" $
+    object $
+        fromPrism versionInfo
+      . prop "major"
+      . prop "minor"
+      . prop "patch"
 
 {-------------------------------------------------------------------------------
   Top-level API
@@ -462,38 +323,3 @@ toJSON = fromMaybe (error "toJSON: Could not serialize") . serialize grammar
 
 fromJSON :: Json a => Value -> Either String a
 fromJSON = Aeson.parseEither (parse grammar)
-
-{-------------------------------------------------------------------------------
-  Auxiliary grammar definitions
--------------------------------------------------------------------------------}
-
-instance Json String          where grammar = string
-instance Json Lazy.ByteString where grammar = lazyByteString
-instance Json BS.ByteString   where grammar = bytestring
-
--- | Define a grammar by enumerating the possible values
---
--- For example:
---
--- > bool :: Grammar Val (Value :- t) (Bool :- t)
--- > bool = enumeration [(True, "true"), (False, "false")]
-enumeration :: Eq a => [(a, Text)] -> Grammar Val (Value :- t) (a :- t)
-enumeration = mconcat . map aux
-  where
-    aux (a, txt) = defaultValue a . literal (Aeson.String txt)
-
--- | String literal
-string :: Grammar Val (Value :- t) (String :- t)
-string = fromPrism (iso Text.unpack Text.pack) . grammar
-
--- | Lazy bytestring literal
-lazyByteString :: Grammar Val (Value :- t) (Lazy.ByteString :- t)
-lazyByteString = fromPrism (iso Lazy.fromString Lazy.toString) . grammar
-
--- | Strict bytestring literal
-bytestring :: Grammar Val (Value :- t) (BS.ByteString :- t)
-bytestring = fromPrism (iso BS.fromString BS.toString) . grammar
-
--- | Optional property
-optProp :: Json a => Text -> Grammar Obj t (Maybe a :- t)
-optProp propName = fromPrism just . prop propName <> fromPrism nothing
