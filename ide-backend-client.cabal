@@ -36,7 +36,7 @@ executable ide-backend-client
                        optparse-applicative >= 0.11 && < 0.12,
                        stack-prism          >= 0.1  && < 0.2,
                        text                 >= 1.1  && < 1.3,
-                       utf8-string          >= 0.3  && < 0.4
+                       utf8-string          >= 0.3  && < 1.1
   hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options:         -Wall -fno-warn-orphans
