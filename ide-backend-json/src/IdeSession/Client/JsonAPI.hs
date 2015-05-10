@@ -88,7 +88,7 @@ data RequestSessionUpdate =
     RequestUpdateSourceFile FilePath Lazy.ByteString
   | RequestUpdateSourceFileFromFile FilePath
   | RequestUpdateGhcOpts [String]
-  deriving Show
+  deriving (Eq, Show)
 
 -- | Messages sent back from the client to the editor
 data Response =
@@ -111,17 +111,17 @@ data Response =
 
 data ResponseSpanInfo =
     ResponseSpanInfo SpanInfo SourceSpan
-  deriving Show
+  deriving (Eq, Show)
 
 data ResponseExpType =
     ResponseExpType Text SourceSpan
-  deriving Show
+  deriving (Eq, Show)
 
 data AutocompletionSpan = AutocompletionSpan
    { autocompletionFilePath :: FilePath
    , autocompletionPrefix :: String
    }
-   deriving Show
+   deriving (Eq, Show)
 
 data AutocompletionInfo = AutocompletionInfo
    { autocompletionInfoDefinedIn :: Text
@@ -129,14 +129,14 @@ data AutocompletionInfo = AutocompletionInfo
    , autocompletionQualifier :: Maybe Text
    , autocompletionType :: Maybe Text
    }
-   deriving Show
+   deriving (Eq, Show)
 
 -- | Client version
 --
 -- Standard versioning applies (major, minor, patch)
 data VersionInfo =
     VersionInfo Int Int Int
-  deriving Show
+  deriving (Eq, Show)
 
 type Identifier = Text
 
