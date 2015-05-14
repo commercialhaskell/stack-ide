@@ -75,7 +75,7 @@ data Request =
   | RequestGetExpTypes SourceSpan
   | RequestGetAutocompletion AutocompletionSpan
   -- Run
-  | RequestRun ModuleName Identifier
+  | RequestRun Bool ModuleName Identifier
   | RequestProcessInput BS.ByteString
   | RequestProcessKill
   -- Misc
@@ -181,6 +181,7 @@ instance Json Request where
         . prop "autocomplete"
       ,   property "request" "run"
         . fromPrism requestRun
+        . prop "usePty"
         . prop "module"
         . prop "identifier"
       ,   property "request" "processInput"

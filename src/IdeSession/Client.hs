@@ -148,8 +148,9 @@ mainLoop clientIO session0 = do
               Nothing ->
                 putEnc $ ResponseGetAutocompletion []
             loop
-          Right (RequestRun mn identifier) -> do
-            actions <- runStmt session (Text.unpack mn) (Text.unpack identifier)
+          Right (RequestRun usePty mn identifier) -> do
+            actions <- (if usePty then runStmt else runStmtPty)
+              session (Text.unpack mn) (Text.unpack identifier)
             writeIORef mprocessRef (Just actions)
             --FIXME: exception handling for this.
             _ <- async $ fix $ \inputLoop -> do
