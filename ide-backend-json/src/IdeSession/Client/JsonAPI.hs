@@ -30,7 +30,6 @@ module IdeSession.Client.JsonAPI (
   , Response(..)
   , ResponseSpanInfo(..)
   , ResponseExpType(..)
-  , VersionInfo(..)
   , AutocompletionSpan(..)
   , AutocompletionInfo(..)
   , VersionInfo(..)
