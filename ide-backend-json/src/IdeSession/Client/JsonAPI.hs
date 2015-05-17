@@ -30,6 +30,9 @@ module IdeSession.Client.JsonAPI (
   , Response(..)
   , ResponseSpanInfo(..)
   , ResponseExpType(..)
+  , ResponseAnnExpType(..)
+  , AnnSpan(..)
+  , TypeAnn(..)
   , AutocompletionSpan(..)
   , AutocompletionInfo(..)
   , VersionInfo(..)
@@ -73,6 +76,7 @@ data Request =
   | RequestGetLoadedModules
   | RequestGetSpanInfo SourceSpan
   | RequestGetExpTypes SourceSpan
+  | RequestGetAnnExpTypes SourceSpan
   | RequestGetAutocompletion AutocompletionSpan
   -- Run
   | RequestRun Bool ModuleName Identifier
@@ -99,6 +103,7 @@ data Response =
   | ResponseGetLoadedModules [ModuleName]
   | ResponseGetSpanInfo [ResponseSpanInfo]
   | ResponseGetExpTypes [ResponseExpType]
+  | ResponseGetAnnExpTypes [ResponseAnnExpType]
   | ResponseGetAutocompletion [AutocompletionInfo]
   -- Run
   | ResponseProcessOutput BS.ByteString
@@ -114,6 +119,18 @@ data ResponseSpanInfo =
 
 data ResponseExpType =
     ResponseExpType Text SourceSpan
+  deriving (Eq, Show)
+
+data ResponseAnnExpType =
+    ResponseAnnExpType [AnnSpan TypeAnn] Text SourceSpan
+  deriving (Eq, Show)
+
+data AnnSpan a =
+    AnnSpan Int Int a
+  deriving (Eq, Show)
+
+data TypeAnn =
+    TypeIdInfo IdInfo
   deriving (Eq, Show)
 
 data AutocompletionSpan = AutocompletionSpan
@@ -151,6 +168,9 @@ $(fmap concat $ mapM (deriveStackPrismsWith prismNameForConstructor)
   , ''Response
   , ''ResponseSpanInfo
   , ''ResponseExpType
+  , ''ResponseAnnExpType
+  , ''AnnSpan
+  , ''TypeAnn
   , ''AutocompletionSpan
   , ''AutocompletionInfo
   , ''VersionInfo
@@ -175,6 +195,9 @@ instance Json Request where
         . prop "span"
       ,   property "request" "getExpTypes"
         . fromPrism requestGetExpTypes
+        . prop "span"
+      ,   property "request" "getAnnExpTypes"
+        . fromPrism requestGetAnnExpTypes
         . prop "span"
       ,   property "request" "getAutocompletion"
         . fromPrism requestGetAutocompletion
@@ -229,6 +252,9 @@ instance Json Response where
       ,   property "response" "getExpTypes"
         . fromPrism responseGetExpTypes
         . prop "info"
+      ,   property "response" "getAnnExpTypes"
+        . fromPrism responseGetAnnExpTypes
+        . prop "info"
       ,   property "response" "getAutocompletion"
         . fromPrism responseGetAutocompletion
         . prop "completions"
@@ -280,6 +306,29 @@ instance Json ResponseExpType where
         fromPrism responseExpType
       . prop "type"
       . prop "span"
+
+instance Json ResponseAnnExpType where
+  grammar = label "ResponseAnnExpType" $
+    object $
+        fromPrism responseAnnExpType
+      . prop "anns"
+      . prop "type"
+      . prop "span"
+
+instance Json a => Json (AnnSpan a) where
+  grammar = label "AnnSpan" $
+    object $
+        fromPrism annSpan
+      . prop "from"
+      . prop "to"
+      . prop "ann"
+
+instance Json TypeAnn where
+  grammar = label "TypeAnn" $ mconcat
+    [ object $
+        fromPrism typeIdInfo
+      . prop "idInfo"
+    ]
 
 instance Json VersionInfo where
   grammar = label "VersionInfo" $

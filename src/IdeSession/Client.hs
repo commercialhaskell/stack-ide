@@ -24,6 +24,7 @@ import Prelude hiding (mod, span)
 import qualified Data.Text as Text
 
 import IdeSession
+import IdeSession.Client.AnnotateTypeInfo (annotateTypeInfo)
 import IdeSession.Client.CmdLine
 import IdeSession.Client.JsonAPI
 #ifdef USE_CABAL
@@ -86,6 +87,7 @@ mainLoop clientIO session0 = do
     go :: IdeSession -> IORef (Maybe (RunActions RunResult)) -> IO ()
     go session mprocessRef = do
       spanInfo <- getSpanInfo session -- Might not be empty (for Cabal init)
+      fileMap <- getFileMap session
       expTypes <- getExpTypes session
       autoComplete <- getAutocompletion session
       fix $ \loop -> do
@@ -111,7 +113,6 @@ mainLoop clientIO session0 = do
             putEnc $ ResponseGetLoadedModules mods
             loop
           Right (RequestGetSpanInfo span) -> do
-            fileMap <- getFileMap session
             case fileMap (spanFilePath span) of
               Just mod -> do
                 let mkInfo (span', info) = ResponseSpanInfo info span'
@@ -122,19 +123,24 @@ mainLoop clientIO session0 = do
                 putEnc $ ResponseGetSpanInfo []
             loop
           Right (RequestGetExpTypes span) -> do
-            fileMap <- getFileMap session
-            case fileMap (spanFilePath span) of
-              Just mod -> do
-                let mkInfo (span', info) = ResponseExpType info span'
-                putEnc $ ResponseGetExpTypes
-                      $ map mkInfo
-                      $ sortSpans
-                      $ expTypes (moduleName mod) span
-              Nothing ->
-                putEnc $ ResponseGetExpTypes []
+            putEnc $ ResponseGetExpTypes $
+              case fileMap (spanFilePath span) of
+                Just mod ->
+                  map (\(span', info) -> ResponseExpType info span') $
+                  sortSpans $
+                  expTypes (moduleName mod) span
+                Nothing -> []
+            loop
+          Right (RequestGetAnnExpTypes span) -> do
+            putEnc $ ResponseGetAnnExpTypes $
+              case fileMap (spanFilePath span) of
+                Just (moduleName -> mn) ->
+                  map (annotateTypeInfo (autoComplete mn)) $
+                  sortSpans $
+                  expTypes mn span
+                Nothing -> []
             loop
           Right (RequestGetAutocompletion autocmpletionSpan) -> do
-            fileMap <- getFileMap session
             case fileMap (autocompletionFilePath autocmpletionSpan) of
               Just mod -> do
                 let query = (autocompletionPrefix autocmpletionSpan)
@@ -179,7 +185,6 @@ mainLoop clientIO session0 = do
             putEnc $ ResponseShutdownSession
     ignoreProgress :: Progress -> IO ()
     ignoreProgress _ = return ()
-
 
 -- | We sort the spans from thinnest to thickest. Currently
 -- ide-backend sometimes returns results unsorted, therefore for now
