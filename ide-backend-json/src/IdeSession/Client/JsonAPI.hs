@@ -31,7 +31,7 @@ module IdeSession.Client.JsonAPI (
   , ResponseSpanInfo(..)
   , ResponseExpType(..)
   , ResponseAnnExpType(..)
-  , AnnSpan(..)
+  , Ann(..)
   , TypeAnn(..)
   , AutocompletionSpan(..)
   , AutocompletionInfo(..)
@@ -122,11 +122,13 @@ data ResponseExpType =
   deriving (Eq, Show)
 
 data ResponseAnnExpType =
-    ResponseAnnExpType [AnnSpan TypeAnn] Text SourceSpan
+    ResponseAnnExpType (Ann TypeAnn) SourceSpan
   deriving (Eq, Show)
 
-data AnnSpan a =
-    AnnSpan Int Int a
+data Ann a =
+    Ann a (Ann a)
+  | AnnGroup [Ann a]
+  | AnnLeaf Text
   deriving (Eq, Show)
 
 data TypeAnn =
@@ -169,7 +171,7 @@ $(fmap concat $ mapM (deriveStackPrismsWith prismNameForConstructor)
   , ''ResponseSpanInfo
   , ''ResponseExpType
   , ''ResponseAnnExpType
-  , ''AnnSpan
+  , ''Ann
   , ''TypeAnn
   , ''AutocompletionSpan
   , ''AutocompletionInfo
@@ -311,17 +313,18 @@ instance Json ResponseAnnExpType where
   grammar = label "ResponseAnnExpType" $
     object $
         fromPrism responseAnnExpType
-      . prop "anns"
       . prop "type"
       . prop "span"
 
-instance Json a => Json (AnnSpan a) where
-  grammar = label "AnnSpan" $
-    object $
-        fromPrism annSpan
-      . prop "from"
-      . prop "to"
+instance Json a => Json (Ann a) where
+  grammar = label "Ann" $ mconcat
+    [ object $
+        fromPrism ann
       . prop "ann"
+      . prop "value"
+    ,   fromPrism annGroup . array (element grammar)
+    ,   fromPrism annLeaf . grammar
+    ]
 
 instance Json TypeAnn where
   grammar = label "TypeAnn" $ mconcat

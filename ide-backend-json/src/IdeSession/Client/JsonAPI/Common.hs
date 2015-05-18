@@ -71,3 +71,22 @@ bytestring = fromPrism (iso BS.fromString BS.toString) . grammar
 -- | Optional property
 optProp :: Json a => Text -> Grammar Obj t (Maybe a :- t)
 optProp propName = fromPrism just . prop propName <> fromPrism nothing
+
+{-------------------------------------------------------------------------------
+  Misc Utils
+
+  Useful for ide-backend-client and its client.
+-------------------------------------------------------------------------------}
+
+sliceSpans :: Int -> Text -> [(Int, Int, a)] -> [(Text, Maybe a)]
+sliceSpans _ txt _ | Text.null txt = []
+sliceSpans _ txt [] = [(txt, Nothing)]
+sliceSpans ix txt ((fr, to, x) : xs) =
+    appendNonNull before Nothing $
+    appendNonNull chunk (Just x) $
+    sliceSpans to rest' xs
+  where
+    appendNonNull t mx = if Text.null t then id else ((t, mx) :)
+    (chunk, rest') = Text.splitAt ((to - ix) - fr') rest
+    (before, rest) = Text.splitAt fr' txt
+    fr' = max 0 (fr - ix)

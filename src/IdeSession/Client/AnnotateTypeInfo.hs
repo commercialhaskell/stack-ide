@@ -12,7 +12,8 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Typeable (Typeable, cast)
 import           Debug.Trace (trace)
-import           IdeSession.Client.JsonAPI (ResponseAnnExpType(..), AnnSpan(..), TypeAnn(..))
+import           IdeSession.Client.JsonAPI (ResponseAnnExpType(..), Ann(..), TypeAnn(..))
+import           IdeSession.Client.JsonAPI.Common (sliceSpans)
 import           IdeSession.Types.Public (SourceSpan(..), IdInfo(..), IdProp(..), idInfoQN)
 import           Language.Haskell.Exts.Annotated hiding (Ann)
 
@@ -20,24 +21,39 @@ import           Language.Haskell.Exts.Annotated hiding (Ann)
 warning :: String -> a -> a
 warning msg = trace ("AnnotateTypeInfo warning: " ++ msg)
 
+-- | Annotates type info by looking up identifiers in the
+-- autocompletion map.
 annotateTypeInfo
  :: (String -> [IdInfo])
  -> (SourceSpan, Text)
  -> ResponseAnnExpType
 annotateTypeInfo autoComplete (ss, typ) =
-    ResponseAnnExpType anns typ ss
+    ResponseAnnExpType result ss
   where
-    anns = case parseTypeWithMode parseMode (T.unpack typ) of
-      res@ParseFailed{} -> warning (show res) []
+    -- NOTE: This sanitization is probably unnecessary, I don't think
+    -- ide-backend output will include tabs or newlines.  However, it
+    -- seems prudent.
+    typ' = T.map tabToSpace $ T.unwords $ T.lines typ
+    tabToSpace '\t' = ' '
+    tabToSpace x = x
+    result = case parseTypeWithMode parseMode (T.unpack typ') of
+      res@ParseFailed{} -> warning (show res) (AnnLeaf typ)
       ParseOk parsed ->
-        -- Note: assuming info is on one line (seems to be true).
-        map (\(ss', info) -> AnnSpan (srcSpanStartColumn ss' - 1)
-                                     (srcSpanEndColumn ss' - 1)
-                                     (TypeIdInfo info)) $
-        sortBy (comparing fst) $
-        mapMaybe (\x -> (srcInfoSpan (ann x), ) <$> exactLookup autoComplete (prettyPrint x)) $
-        getQNames parsed
+          AnnGroup $
+          map toAnn $
+          sliceSpans 0 typ $
+          map (\(ss', info) -> ( srcSpanStartColumn ss' - 1
+                               , srcSpanEndColumn ss' - 1
+                               , TypeIdInfo info)) $
+          sortBy (comparing fst) $
+          mapMaybe (\x -> (srcInfoSpan (ann x), ) <$> exactLookup autoComplete (prettyPrint x)) $
+          getQNames parsed
+        where
+          toAnn (chunk, Nothing) = AnnLeaf chunk
+          toAnn (chunk, Just x) = Ann x $ AnnLeaf chunk
 
+--FIXME: filter to only the type identifiers.  Fallback on data
+--constructors incase we're using lifted datatypes
 exactLookup :: (String -> [IdInfo]) -> String -> Maybe IdInfo
 exactLookup autoComplete ident =
   case filter (nameMatches ident) (autoComplete ident) of
