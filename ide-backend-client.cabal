@@ -19,6 +19,7 @@ flag use-cabal
 library
   hs-source-dirs:      src
   exposed-modules:     IdeSession.Client
+                       IdeSession.Client.AnnotateMessage
                        IdeSession.Client.AnnotateTypeInfo
                        IdeSession.Client.CmdLine
                        IdeSession.Client.Util.ValueStream
@@ -46,7 +47,10 @@ library
                        utf8-string          >= 0.3  && < 1.1,
                        ide-backend-json     == 0.1.0.0,
                        ide-backend-common   >= 0.9.1,
-                       haskell-src-exts     >= 1.15
+                       haskell-src-exts     >= 1.15,
+                       safe                 >= 0.3,
+                       text-icu             >= 0.7,
+                       spoon                >= 0.3
   default-language:    Haskell2010
   ghc-options:         -Wall -fno-warn-orphans
   default-extensions:  DataKinds

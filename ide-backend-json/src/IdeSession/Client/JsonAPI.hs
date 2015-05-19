@@ -33,6 +33,8 @@ module IdeSession.Client.JsonAPI (
   , ResponseAnnExpType(..)
   , Ann(..)
   , TypeAnn(..)
+  , AnnSourceError(..)
+  , MsgAnn(..)
   , AutocompletionSpan(..)
   , AutocompletionInfo(..)
   , VersionInfo(..)
@@ -73,6 +75,7 @@ data Request =
     RequestUpdateSession [RequestSessionUpdate]
   -- Query
   | RequestGetSourceErrors
+  | RequestGetAnnSourceErrors
   | RequestGetLoadedModules
   | RequestGetSpanInfo SourceSpan
   | RequestGetExpTypes SourceSpan
@@ -100,6 +103,7 @@ data Response =
     -- | Nothing indicates the update completed
   | ResponseUpdateSession (Maybe Progress)
   | ResponseGetSourceErrors [SourceError]
+  | ResponseGetAnnSourceErrors [AnnSourceError]
   | ResponseGetLoadedModules [ModuleName]
   | ResponseGetSpanInfo [ResponseSpanInfo]
   | ResponseGetExpTypes [ResponseExpType]
@@ -133,6 +137,20 @@ data Ann a =
 
 data TypeAnn =
     TypeIdInfo IdInfo
+  deriving (Eq, Show)
+
+data AnnSourceError = AnnSourceError
+  { annErrorKind :: !SourceErrorKind
+  , annErrorSpan :: !EitherSpan
+  , annErrorMsg :: !(Ann MsgAnn)
+  }
+  deriving (Eq, Show)
+
+data MsgAnn =
+    MsgAnnModule
+  | MsgAnnCode -- ^ Note: Ideally we'd distinguish identifiers, types, exprs, etc
+  | MsgAnnRefactor Text [(SourceSpan, Text)]
+  | MsgAnnCollapse
   deriving (Eq, Show)
 
 data AutocompletionSpan = AutocompletionSpan
@@ -173,6 +191,8 @@ $(fmap concat $ mapM (deriveStackPrismsWith prismNameForConstructor)
   , ''ResponseAnnExpType
   , ''Ann
   , ''TypeAnn
+  , ''AnnSourceError
+  , ''MsgAnn
   , ''AutocompletionSpan
   , ''AutocompletionInfo
   , ''VersionInfo
@@ -190,6 +210,8 @@ instance Json Request where
         . prop "update"
       ,   property "request" "getSourceErrors"
         . fromPrism requestGetSourceErrors
+      ,   property "request" "getAnnSourceErrors"
+        . fromPrism requestGetAnnSourceErrors
       ,   property "request" "getLoadedModules"
         . fromPrism requestGetLoadedModules
       ,   property "request" "getSpanInfo"
@@ -244,6 +266,9 @@ instance Json Response where
         . optProp "progress"
       ,   property "response" "getSourceErrors"
         . fromPrism responseGetSourceErrors
+        . prop "errors"
+      ,   property "response" "getAnnSourceErrors"
+        . fromPrism responseGetAnnSourceErrors
         . prop "errors"
       ,   property "response" "getLoadedModules"
         . fromPrism responseGetLoadedModules
@@ -331,6 +356,32 @@ instance Json TypeAnn where
     [ object $
         fromPrism typeIdInfo
       . prop "idInfo"
+    ]
+
+instance Json AnnSourceError where
+  grammar = label "AnnSourceError" $
+    object $
+        fromPrism annSourceError
+      . prop "kind"
+      . prop "span"
+      . prop "msg"
+
+instance Json MsgAnn where
+  grammar = label "MsgAnn" $ mconcat
+    [ object $
+        property "label" "Module"
+      . fromPrism msgAnnModule
+    , object $
+        property "label" "Code"
+      . fromPrism msgAnnCode
+    , object $
+        property "label" "Refactor"
+      . fromPrism msgAnnRefactor
+      . prop "msg"
+      . prop "replacements"
+    , object $
+        property "label" "Collapse"
+      . fromPrism msgAnnCollapse
     ]
 
 instance Json VersionInfo where

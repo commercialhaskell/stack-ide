@@ -25,6 +25,7 @@ import qualified Data.Text as Text
 
 import IdeSession
 import IdeSession.Client.AnnotateTypeInfo (annotateTypeInfo)
+import IdeSession.Client.AnnotateMessage (annotateMessage)
 import IdeSession.Client.CmdLine
 import IdeSession.Client.JsonAPI
 #ifdef USE_CABAL
@@ -107,6 +108,10 @@ mainLoop clientIO session0 = do
           Right RequestGetSourceErrors -> do
             errors <- getSourceErrors session
             putEnc $ ResponseGetSourceErrors errors
+            loop
+          Right RequestGetAnnSourceErrors -> do
+            errors <- getSourceErrors session
+            putEnc $ ResponseGetAnnSourceErrors $ map annotateMessage errors
             loop
           Right RequestGetLoadedModules -> do
             mods <- getLoadedModules session
