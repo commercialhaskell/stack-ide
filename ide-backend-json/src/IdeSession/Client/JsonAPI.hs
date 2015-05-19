@@ -22,7 +22,6 @@
 -- stable, and well documented.
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE KindSignatures #-}
 module IdeSession.Client.JsonAPI (
     -- * Requests
     Request(..)
@@ -133,7 +132,7 @@ data Ann a =
     Ann a (Ann a)
   | AnnGroup [Ann a]
   | AnnLeaf Text
-  deriving (Eq, Show)
+  deriving (Eq, Show, Functor)
 
 data TypeAnn =
     TypeIdInfo IdInfo

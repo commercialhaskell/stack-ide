@@ -9,6 +9,7 @@ module IdeSession.Client
 #endif
     ) where
 
+import Control.Applicative ((<$>))
 import Control.Arrow ((***))
 import Control.Concurrent.Async (async)
 import Control.Exception
@@ -21,10 +22,11 @@ import Data.Monoid
 import Data.Ord
 import Prelude hiding (mod, span)
 
+import Data.Text (Text)
 import qualified Data.Text as Text
 
 import IdeSession
-import IdeSession.Client.AnnotateTypeInfo (annotateTypeInfo)
+import IdeSession.Client.AnnotateHaskell (annotateType, Autocomplete)
 import IdeSession.Client.AnnotateMessage (annotateMessage)
 import IdeSession.Client.CmdLine
 import IdeSession.Client.JsonAPI
@@ -190,6 +192,10 @@ mainLoop clientIO session0 = do
             putEnc $ ResponseShutdownSession
     ignoreProgress :: Progress -> IO ()
     ignoreProgress _ = return ()
+
+annotateTypeInfo :: Autocomplete -> (SourceSpan, Text) -> ResponseAnnExpType
+annotateTypeInfo autocomplete (span, info) =
+  ResponseAnnExpType (TypeIdInfo <$> annotateType autocomplete info) span
 
 -- | We sort the spans from thinnest to thickest. Currently
 -- ide-backend sometimes returns results unsorted, therefore for now

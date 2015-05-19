@@ -38,5 +38,7 @@ library
                        StandaloneDeriving
                        TypeOperators
                        BangPatterns
+                       KindSignatures
+                       DeriveFunctor
   other-extensions:    OverloadedStrings
                        TemplateHaskell

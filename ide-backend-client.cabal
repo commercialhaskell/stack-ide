@@ -19,8 +19,8 @@ flag use-cabal
 library
   hs-source-dirs:      src
   exposed-modules:     IdeSession.Client
+                       IdeSession.Client.AnnotateHaskell
                        IdeSession.Client.AnnotateMessage
-                       IdeSession.Client.AnnotateTypeInfo
                        IdeSession.Client.CmdLine
                        IdeSession.Client.Util.ValueStream
   if flag(use-cabal)
