@@ -11,9 +11,9 @@ module IdeSession.Client
 
 import Control.Applicative ((<$>))
 import Control.Arrow ((***))
-import Control.Concurrent.Async (async)
+import Control.Concurrent.Async (withAsync)
 import Control.Exception
-import Control.Monad (join, mfilter)
+import Control.Monad (join, mfilter, void)
 import Data.Aeson (Value)
 import Data.Function
 import Data.IORef
@@ -162,32 +162,31 @@ mainLoop clientIO session0 = do
                 putEnc $ ResponseGetAutocompletion []
             loop
           Right (RequestRun usePty mn identifier) -> do
-            actions <- (if usePty then runStmt else runStmtPty)
+            actions <- (if usePty then runStmtPty else runStmt)
               session (Text.unpack mn) (Text.unpack identifier)
             writeIORef mprocessRef (Just actions)
-            --FIXME: exception handling for this.
-            _ <- async $ fix $ \inputLoop -> do
-              result <- runWait actions
-              case result of
-                Left output -> do
-                  putEnc $ ResponseProcessOutput output
-                  inputLoop
-                Right done -> do
-                  putEnc $ ResponseProcessDone done
-                  writeIORef mprocessRef Nothing
-            loop
+            let sendOutput = fix $ \outputLoop -> do
+                  result <- runWait actions
+                  case result of
+                    Left output -> do
+                      putEnc $ ResponseProcessOutput output
+                      outputLoop
+                    Right done -> do
+                      putEnc $ ResponseProcessDone done
+                      writeIORef mprocessRef Nothing
+            void $ withAsync sendOutput $ \_ -> loop
           Right (RequestProcessInput input) -> do
             mprocess <- readIORef mprocessRef
             case mprocess of
               Just actions -> supplyStdin actions input
-              --FIXME: throw exception for this.
-              Nothing -> return ()
+              Nothing -> putEnc ResponseNoProcessError
+            loop
           Right RequestProcessKill -> do
             mprocess <- readIORef mprocessRef
             case mprocess of
               Just actions -> interrupt actions
-              --FIXME: throw exception for this.
-              Nothing -> return ()
+              Nothing -> putEnc ResponseNoProcessError
+            loop
           Right RequestShutdownSession ->
             putEnc $ ResponseShutdownSession
     ignoreProgress :: Progress -> IO ()

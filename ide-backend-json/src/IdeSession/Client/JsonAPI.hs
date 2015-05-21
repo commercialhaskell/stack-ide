@@ -111,6 +111,7 @@ data Response =
   -- Run
   | ResponseProcessOutput BS.ByteString
   | ResponseProcessDone RunResult
+  | ResponseNoProcessError
   -- Misc
   | ResponseInvalidRequest String
   | ResponseShutdownSession
@@ -290,6 +291,8 @@ instance Json Response where
       ,   property "response" "processDone"
         . fromPrism responseProcessDone
         . prop "result"
+      ,   property "response" "noProcessError"
+        . fromPrism responseNoProcessError
       ,   property "response" "invalidRequest"
         . fromPrism responseInvalidRequest
         . prop "errorMessage"
