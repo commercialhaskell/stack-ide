@@ -113,7 +113,8 @@ mainLoop clientIO session0 = do
             loop
           Right RequestGetAnnSourceErrors -> do
             errors <- getSourceErrors session
-            putEnc $ ResponseGetAnnSourceErrors $ map annotateMessage errors
+            putEnc $ ResponseGetAnnSourceErrors $
+              map (annotateMessage fileMap autoComplete) errors
             loop
           Right RequestGetLoadedModules -> do
             mods <- getLoadedModules session
@@ -194,7 +195,7 @@ mainLoop clientIO session0 = do
 
 annotateTypeInfo :: Autocomplete -> (SourceSpan, Text) -> ResponseAnnExpType
 annotateTypeInfo autocomplete (span, info) =
-  ResponseAnnExpType (TypeIdInfo <$> annotateType autocomplete info) span
+  ResponseAnnExpType (CodeIdInfo <$> annotateType autocomplete info) span
 
 -- | We sort the spans from thinnest to thickest. Currently
 -- ide-backend sometimes returns results unsorted, therefore for now

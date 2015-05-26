@@ -31,9 +31,10 @@ module IdeSession.Client.JsonAPI (
   , ResponseExpType(..)
   , ResponseAnnExpType(..)
   , Ann(..)
-  , TypeAnn(..)
+  , CodeAnn(..)
   , AnnSourceError(..)
   , MsgAnn(..)
+  , CodeVariety(..)
   , AutocompletionSpan(..)
   , AutocompletionInfo(..)
   , VersionInfo(..)
@@ -126,7 +127,7 @@ data ResponseExpType =
   deriving (Eq, Show)
 
 data ResponseAnnExpType =
-    ResponseAnnExpType (Ann TypeAnn) SourceSpan
+    ResponseAnnExpType (Ann CodeAnn) SourceSpan
   deriving (Eq, Show)
 
 data Ann a =
@@ -135,8 +136,8 @@ data Ann a =
   | AnnLeaf Text
   deriving (Eq, Show, Functor)
 
-data TypeAnn =
-    TypeIdInfo IdInfo
+data CodeAnn =
+    CodeIdInfo IdInfo
   deriving (Eq, Show)
 
 data AnnSourceError = AnnSourceError
@@ -148,9 +149,22 @@ data AnnSourceError = AnnSourceError
 
 data MsgAnn =
     MsgAnnModule
-  | MsgAnnCode -- ^ Note: Ideally we'd distinguish identifiers, types, exprs, etc
+  | MsgAnnCode CodeVariety
+  | MsgAnnCodeAnn CodeAnn
   | MsgAnnRefactor Text [(SourceSpan, Text)]
   | MsgAnnCollapse
+  deriving (Eq, Show)
+
+data CodeVariety =
+    ExpCode
+  | TypeCode
+  | UnknownCode
+  -- ^ When there isn't any id info, we don't know if it's an
+  -- expression or type.
+  | AmbiguousCode (Ann MsgAnn)
+  -- ^ When we can't tell whether the code is an expression or type,
+  -- default to yielding type id info.  The expression annotated code
+  -- is yielded in this annotation.
   deriving (Eq, Show)
 
 data AutocompletionSpan = AutocompletionSpan
@@ -190,9 +204,10 @@ $(fmap concat $ mapM (deriveStackPrismsWith prismNameForConstructor)
   , ''ResponseExpType
   , ''ResponseAnnExpType
   , ''Ann
-  , ''TypeAnn
+  , ''CodeAnn
   , ''AnnSourceError
   , ''MsgAnn
+  , ''CodeVariety
   , ''AutocompletionSpan
   , ''AutocompletionInfo
   , ''VersionInfo
@@ -353,11 +368,11 @@ instance Json a => Json (Ann a) where
     ,   fromPrism annLeaf . grammar
     ]
 
-instance Json TypeAnn where
-  grammar = label "TypeAnn" $ mconcat
-    [ object $
-        fromPrism typeIdInfo
-      . prop "idInfo"
+instance Json CodeAnn where
+  grammar = label "CodeAnn" $ object $ mconcat
+    [   property "label" "idInfo"
+      . fromPrism codeIdInfo
+      . prop "info"
     ]
 
 instance Json AnnSourceError where
@@ -371,19 +386,34 @@ instance Json AnnSourceError where
 instance Json MsgAnn where
   grammar = label "MsgAnn" $ mconcat
     [ object $
-        property "label" "Module"
+        property "label" "module"
       . fromPrism msgAnnModule
     , object $
-        property "label" "Code"
+        property "label" "code"
       . fromPrism msgAnnCode
+      . prop "variety"
     , object $
-        property "label" "Refactor"
+        property "label" "refactor"
       . fromPrism msgAnnRefactor
       . prop "msg"
       . prop "replacements"
     , object $
-        property "label" "Collapse"
+        property "label" "collapse"
       . fromPrism msgAnnCollapse
+    -- Directly use the CodeAnn grammar (Note: this means the set of
+    -- label names used by the MsgAnn and CodeAnn grammars must not
+    -- overlap)
+    , fromPrism msgAnnCodeAnn . grammar
+    ]
+
+instance Json CodeVariety where
+  grammar = label "CodeVariety" $ mconcat
+    [ fromPrism expCode . literal (Aeson.String "exp")
+    , fromPrism typeCode . literal (Aeson.String "type")
+    , fromPrism unknownCode . literal (Aeson.String "unknown")
+    , object $
+        fromPrism ambiguousCode
+      . prop "ambiguousWithExp"
     ]
 
 instance Json VersionInfo where

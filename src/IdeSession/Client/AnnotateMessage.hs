@@ -3,6 +3,7 @@
 --   helpful structure to GHC errors and warnings.
 module IdeSession.Client.AnnotateMessage (annotateMessage) where
 
+import           Control.Applicative ((<$>))
 import           Control.Exception
 import           Control.Monad
 import           Control.Spoon (teaspoonWithHandles, Handles)
@@ -13,26 +14,41 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.ICU as ICU
 import qualified Data.Text.ICU.Error as ICU
--- import           Language.Haskell.Extension (KnownExtension)
+import           Debug.Trace (trace)
+import           IdeSession.Client.AnnotateHaskell
+import           IdeSession.Client.JsonAPI (AnnSourceError(..), Ann(..), MsgAnn(..), CodeAnn(..), CodeVariety(..))
+import           IdeSession.Types.Public (SourceError(..), SourceErrorKind(..), SourceSpan(..), EitherSpan(..), ModuleId(..), ModuleName)
 import           Prelude
 import           Safe (headMay, lastMay)
-import           IdeSession.Client.JsonAPI (AnnSourceError(..), Ann(..), MsgAnn(..))
-import           IdeSession.Types.Public (SourceError(..), SourceErrorKind(..), SourceSpan(..), EitherSpan(..))
 
-annotateMessage :: SourceError -> AnnSourceError
-annotateMessage err = AnnSourceError
-  { annErrorKind = errorKind err
-  , annErrorSpan = errorSpan err
-  , annErrorMsg = annotateMessage' err
-  }
+annotateMessage
+  :: (FilePath -> Maybe ModuleId)
+  -> (ModuleName -> Autocomplete)
+  -> SourceError
+  -> AnnSourceError
+annotateMessage fileMap autocomplete err = AnnSourceError
+    { annErrorKind = errorKind err
+    , annErrorSpan = errorSpan err
+    , annErrorMsg = annotateMessage' auto err
+    }
+  where
+    -- For annotating IdInfo, use the autocompletion info from the
+    auto =
+        case errorSpan err of
+            TextSpan _ -> trace "TextSpan\n" $ const []
+            ProperSpan sp ->
+                case fileMap (spanFilePath sp) of
+                    Just mod -> autocomplete (moduleName mod)
+                    -- TODO: consider emitting a warning for this case.
+                    Nothing -> trace ("Couldn't find module for " ++ spanFilePath sp) $ const []
 
-annotateMessage' :: SourceError -> Ann MsgAnn
-annotateMessage' err = case (errorSpan err, errorMsg err) of
+annotateMessage' :: Autocomplete -> SourceError -> Ann MsgAnn
+annotateMessage' auto err = case (errorSpan err, errorMsg err) of
     ( ProperSpan sp,
       match "^(?:Warning: )?The import of ([^\\s]+) is redundant(?:.*)" -> Just [_, x])
       | fromGhc -> AnnGroup
         [ AnnLeaf "Redundant import: "
-        , Ann MsgAnnModule (AnnLeaf (stripIdent x))
+        , Ann MsgAnnModule (AnnLeaf (stripCodeTicks x))
         , Ann (MsgAnnRefactor "remove the import statement" [(sp, "")])
               (AnnLeaf "Remove import")
         ]
@@ -41,7 +57,7 @@ annotateMessage' err = case (errorSpan err, errorMsg err) of
       match "^((?:Warning: )?Top-level binding with no type signature:\n?)(.*)" -> Just [_, prefix, x])
       | fromGhc -> AnnGroup
         [ AnnLeaf prefix
-        , Ann MsgAnnCode (AnnLeaf x)
+        , codeBox auto x
         , Ann (MsgAnnRefactor
                 "insert the type signature above the function declaration"
                 [(SourceSpan fp fl 1 fl 1, T.strip x <> "\n")])
@@ -51,7 +67,8 @@ annotateMessage' err = case (errorSpan err, errorMsg err) of
       match "^(Not in scope:\\s*(?:data constructor|variable|type variable|type constructor or class)?\\s*)([^\\s]+)(.*)$" ->
       Just [_, prefix, var, rest]) -> simplifyAnn $ AnnGroup
         [ AnnLeaf prefix
-        , Ann MsgAnnCode (AnnLeaf (stripIdent var))
+        -- TODO: The message tells us the variety of code, so use that info
+        , codeBox auto (stripCodeTicks var)
         , ghcMessage $ AnnGroup $ suggestions rest
         ]
       where
@@ -66,8 +83,8 @@ annotateMessage' err = case (errorSpan err, errorMsg err) of
         process :: Text -> [Ann MsgAnn]
         process (match "(\\s*)([^\\s]+)(.*)" -> Just [_, prefix', var', rest']) =
             [ AnnLeaf prefix'
-            , Ann (MsgAnnRefactor "replace the identifier with this option" [(sp, stripIdent var')])
-                  (AnnLeaf (stripIdent var'))
+            , Ann (MsgAnnRefactor "replace the identifier with this option" [(sp, stripCodeTicks var')])
+                  (AnnLeaf (stripCodeTicks var'))
             , AnnLeaf rest'
             ]
         process l = [AnnLeaf l]
@@ -94,7 +111,7 @@ annotateMessage' err = case (errorSpan err, errorMsg err) of
   where
     fromGhc = errorKind err `elem` [KindError, KindWarning]
     ghcMessage
-        = onAnnLeafs addCodeBoxes
+        = onAnnLeafs (addCodeBoxes auto)
         -- . onAnnLeafs (addExtensionInserts esp)
         . onAnnLeafs collapseExtras
 
@@ -127,10 +144,10 @@ collapseExtras :: Text -> Ann MsgAnn
 collapseExtras txt =
     case match ("(.*?)(\n\\s*(?:" <> T.intercalate "|" pats <> ").*)") txt of
         Just [_, prefix, collapsed] ->
-          AnnGroup
-            [ AnnLeaf prefix
-            , Ann MsgAnnCollapse (AnnLeaf collapsed)
-            ]
+            AnnGroup
+                [ AnnLeaf prefix
+                , Ann MsgAnnCollapse (AnnLeaf collapsed)
+                ]
         _ -> AnnLeaf txt
   where
     pats =
@@ -142,10 +159,25 @@ collapseExtras txt =
         , "In [the|a|an|some]"
         ]
 
-addCodeBoxes :: Text -> Ann MsgAnn
-addCodeBoxes txt =
-    substAll' "((?:`|‘)[^\\s]+(?:'|’))" txt $ \code ->
-        Ann MsgAnnCode (AnnLeaf (stripIdent code))
+addCodeBoxes :: Autocomplete -> Text -> Ann MsgAnn
+addCodeBoxes auto txt =
+    substAll' "(`\\S+'|‘\\S+’)" txt (codeBox auto . stripCodeTicks)
+
+-- FIXME: Ideally this would also detect module names
+codeBox :: Autocomplete -> Text -> Ann MsgAnn
+codeBox auto code =
+    let annExp = MsgAnnCodeAnn . CodeIdInfo <$> annotateExp auto code
+        annType = MsgAnnCodeAnn . CodeIdInfo <$> annotateType auto code
+    in case (hasAnn annExp, hasAnn annType) of
+        (True, True) -> Ann (MsgAnnCode (AmbiguousCode annExp)) annType
+        (True, False) -> Ann (MsgAnnCode ExpCode) annExp
+        (False, True) -> Ann (MsgAnnCode TypeCode) annType
+        (False, False) -> Ann (MsgAnnCode UnknownCode) annType
+
+hasAnn :: Ann a -> Bool
+hasAnn Ann {} = True
+hasAnn (AnnGroup xs) = any hasAnn xs
+hasAnn AnnLeaf {} = False
 
 -- | Merge adjacent leafs and groups, remove degenerate groups
 --
@@ -153,12 +185,12 @@ addCodeBoxes txt =
 simplifyAnn :: Ann a -> Ann a
 simplifyAnn = id -- FIXME
 
-stripIdent :: Text -> Text
+stripCodeTicks :: Text -> Text
 -- GHC < 7.8
-stripIdent (T.stripPrefix "`" -> Just (T.stripSuffix "'" -> Just x)) = x
+stripCodeTicks (T.stripPrefix "`" -> Just (T.stripSuffix "'" -> Just x)) = x
 -- GHC >= 7.8
-stripIdent (T.stripPrefix "‘" -> Just (T.stripSuffix "’" -> Just x)) = x
-stripIdent x = x
+stripCodeTicks (T.stripPrefix "‘" -> Just (T.stripSuffix "’" -> Just x)) = x
+stripCodeTicks x = x
 
 -- These are inlined so that the regex gets lifted out to top level,
 -- and only gets compiled once.
