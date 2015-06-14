@@ -38,7 +38,7 @@ annotateMessage fileMap autocomplete err = AnnSourceError
             TextSpan _ -> trace "TextSpan\n" $ const []
             ProperSpan sp ->
                 case fileMap (spanFilePath sp) of
-                    Just mod -> autocomplete (moduleName mod)
+                    Just mid -> autocomplete (moduleName mid)
                     -- TODO: consider emitting a warning for this case.
                     Nothing -> trace ("Couldn't find module for " ++ spanFilePath sp) $ const []
 
