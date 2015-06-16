@@ -93,7 +93,20 @@ data Request =
 data RequestSessionUpdate =
     RequestUpdateSourceFile FilePath Lazy.ByteString
   | RequestUpdateSourceFileFromFile FilePath
+  | RequestUpdateSourceFileDelete FilePath
+  | RequestUpdateDataFile FilePath Lazy.ByteString
+  | RequestUpdateDataFileFromFile FilePath FilePath
+  | RequestUpdateDataFileDelete FilePath
   | RequestUpdateGhcOpts [String]
+  | RequestUpdateRtsOpts [String]
+  | RequestUpdateRelativeIncludes [FilePath]
+  | RequestUpdateCodeGeneration Bool
+  | RequestUpdateEnv [(String, Maybe String)]
+  | RequestUpdateArgs [String]
+  --TODO
+  -- | RequestUpdateStdoutBufferMode
+  -- | RequestUpdateStderrBufferMode
+  -- | RequestUpdateTargets
   deriving (Eq, Show)
 
 -- | Messages sent back from the client to the editor
@@ -213,6 +226,13 @@ $(fmap concat $ mapM (deriveStackPrismsWith prismNameForConstructor)
   , ''VersionInfo
   ])
 
+_Just :: StackPrism (a :- t) (Maybe a :- t)
+_Just = stackPrism wrap unwrap
+  where
+    wrap (x :- t) = Just x :- t
+    unwrap (Just x :- t) = Just (x :- t)
+    unwrap (Nothing :- t) = Nothing
+
 {-------------------------------------------------------------------------------
   Translation to and from JSON
 -------------------------------------------------------------------------------}
@@ -258,17 +278,58 @@ instance Json Request where
 instance Json RequestSessionUpdate where
   grammar = label "SessionUpdate" $
     object $ mconcat [
-          property "update" "updateSourceFile"
+          property "update" "sourceFile"
         . fromPrism requestUpdateSourceFile
         . prop "filePath"
         . prop "contents"
-      ,   property "update" "updateSourceFileFromFile"
+      ,   property "update" "sourceFileFromFile"
         . fromPrism requestUpdateSourceFileFromFile
         . prop "filePath"
-      ,   property "update" "updateGhcOpts"
+      ,   property "update" "sourceFileDelete"
+        . fromPrism requestUpdateSourceFileDelete
+        . prop "filePath"
+      ,   property "update" "dataFile"
+        . fromPrism requestUpdateDataFile
+        . prop "filePath"
+        . prop "contents"
+      ,   property "update" "dataFileFromFile"
+        . fromPrism requestUpdateDataFileFromFile
+        . prop "remoteFile"
+        . prop "localFile"
+      ,   property "update" "dataFileDelete"
+        . fromPrism requestUpdateDataFileDelete
+        . prop "filePath"
+      ,   property "update" "ghcOpts"
         . fromPrism requestUpdateGhcOpts
         . prop "options"
+      ,   property "update" "rtsOpts"
+        . fromPrism requestUpdateRtsOpts
+        . prop "options"
+      ,   property "update" "relativeIncludes"
+        . fromPrism requestUpdateRelativeIncludes
+        . prop "dirs"
+      ,   property "update" "codeGeneration"
+        . fromPrism requestUpdateCodeGeneration
+        . prop "enabled"
+      ,   property "update" "env"
+        . fromPrism requestUpdateEnv
+        -- TODO: This stores an array of arrays.  It'd be prettier to
+        -- use an object for it, but this seems tricky with
+        -- JsonGrammar.
+        . property "variables"
+          (array $ many (element (cons . envVariableSetting)) . nil)
+      ,   property "update" "args"
+        . fromPrism requestUpdateArgs
+        . prop "arguments"
       ]
+
+envVariableSetting :: Grammar 'Val (Value :- t) ((String, Maybe String) :- t)
+envVariableSetting = array $
+    tup2
+  -- Variable name
+  . element grammar
+  -- Variable value (if omitted, unsets the var)
+  . (element (fromPrism _Just . grammar))
 
 instance Json Response where
   grammar = label "Response" $

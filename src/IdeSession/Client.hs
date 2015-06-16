@@ -227,5 +227,19 @@ makeSessionUpdate (RequestUpdateSourceFile filePath contents) =
   updateSourceFile filePath contents
 makeSessionUpdate (RequestUpdateSourceFileFromFile filePath) =
   updateSourceFileFromFile filePath
+makeSessionUpdate (RequestUpdateSourceFileDelete filePath) =
+  updateSourceFileDelete filePath
+makeSessionUpdate (RequestUpdateDataFile filePath contents) =
+  updateDataFile filePath contents
+makeSessionUpdate (RequestUpdateDataFileFromFile remoteFile localFile) =
+  updateDataFileFromFile remoteFile localFile
+makeSessionUpdate (RequestUpdateDataFileDelete filePath) =
+  updateDataFileDelete filePath
 makeSessionUpdate (RequestUpdateGhcOpts options) =
   updateGhcOpts options
+makeSessionUpdate (RequestUpdateRtsOpts options) =
+  updateRtsOpts options
+makeSessionUpdate (RequestUpdateEnv variables) =
+  updateEnv variables
+makeSessionUpdate (RequestUpdateArgs args) =
+  updateArgs args
