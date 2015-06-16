@@ -35,8 +35,8 @@ import IdeSession.Client.Cabal
 #endif
 
 data ClientIO = ClientIO
-    { putJson :: Value -> IO ()
-    , getJson :: IO Value
+    { sendResponse :: Response -> IO ()
+    , receiveRequest :: IO (Either String Request)
     }
 
 startEmptySession :: ClientIO -> Options -> EmptyOptions -> IO ()
@@ -57,12 +57,12 @@ startCabalSession clientIO options cabalOptions = do
 sendTargetsList :: ClientIO -> FilePath -> IO ()
 sendTargetsList clientIO fp = do
     sendWelcome clientIO
-    putJson clientIO . toJSON =<< listTargets fp
+    sendResponse clientIO =<< listTargets fp
 #endif
 
 sendWelcome :: ClientIO -> IO ()
 sendWelcome clientIO =
-    putJson clientIO $ toJSON $ ResponseWelcome ideBackendClientVersion
+     sendResponse clientIO $ ResponseWelcome ideBackendClientVersion
 
 -- | Version of the client API
 --
@@ -83,7 +83,7 @@ mainLoop clientIO session0 = do
   mprocessRef <- newIORef Nothing
   go session0 mprocessRef
   where
-    putEnc = putJson clientIO . toJSON
+    send = sendResponse clientIO
     -- This is called after every session update that doesn't yield
     -- compile errors.  If there are compile errors, we use the info
     -- from the previous update.
@@ -94,44 +94,44 @@ mainLoop clientIO session0 = do
       expTypes <- getExpTypes session
       autoComplete <- getAutocompletion session
       fix $ \loop -> do
-        value <- getJson clientIO
-        case fromJSON value of
+        ereq <- receiveRequest clientIO
+        case ereq of
           Left err -> do
-            putEnc $ ResponseInvalidRequest err
+            send $ ResponseInvalidRequest err
             loop
           Right (RequestUpdateSession upd) -> do
             updateSession session (mconcat (map makeSessionUpdate upd)) $ \progress ->
-              putEnc $ ResponseUpdateSession (Just progress)
-            putEnc $ ResponseUpdateSession Nothing
+              send $ ResponseUpdateSession (Just progress)
+            send $ ResponseUpdateSession Nothing
             errors <- getSourceErrors session
             if all ((== KindWarning) . errorKind) errors
               then go session mprocessRef
               else loop
           Right RequestGetSourceErrors -> do
             errors <- getSourceErrors session
-            putEnc $ ResponseGetSourceErrors errors
+            send $ ResponseGetSourceErrors errors
             loop
           Right RequestGetAnnSourceErrors -> do
             errors <- getSourceErrors session
-            putEnc $ ResponseGetAnnSourceErrors $
+            send $ ResponseGetAnnSourceErrors $
               map (annotateMessage fileMap autoComplete) errors
             loop
           Right RequestGetLoadedModules -> do
             mods <- getLoadedModules session
-            putEnc $ ResponseGetLoadedModules mods
+            send $ ResponseGetLoadedModules mods
             loop
           Right (RequestGetSpanInfo span) -> do
             case fileMap (spanFilePath span) of
               Just mod -> do
                 let mkInfo (span', info) = ResponseSpanInfo info span'
-                putEnc $ ResponseGetSpanInfo
+                send $ ResponseGetSpanInfo
                        $ map mkInfo
                        $ spanInfo (moduleName mod) span
               Nothing ->
-                putEnc $ ResponseGetSpanInfo []
+                send $ ResponseGetSpanInfo []
             loop
           Right (RequestGetExpTypes span) -> do
-            putEnc $ ResponseGetExpTypes $
+            send $ ResponseGetExpTypes $
               case fileMap (spanFilePath span) of
                 Just mod ->
                   map (\(span', info) -> ResponseExpType info span') $
@@ -140,7 +140,7 @@ mainLoop clientIO session0 = do
                 Nothing -> []
             loop
           Right (RequestGetAnnExpTypes span) -> do
-            putEnc $ ResponseGetAnnExpTypes $
+            send $ ResponseGetAnnExpTypes $
               case fileMap (spanFilePath span) of
                 Just (moduleName -> mn) ->
                   map (annotateTypeInfo (autoComplete mn)) $
@@ -155,12 +155,12 @@ mainLoop clientIO session0 = do
                     splitQualifier = join (***) reverse . break (== '.') . reverse
                     (prefix, qualifierStr) = splitQualifier query
                     qualifier = mfilter (not . Text.null) (Just (Text.pack qualifierStr))
-                putEnc $ ResponseGetAutocompletion
+                send $ ResponseGetAutocompletion
                        $ filter ((== qualifier) . autocompletionQualifier)
                        $ map idInfoToAutocompletion
                        $ autoComplete (moduleName mod) prefix
               Nothing ->
-                putEnc $ ResponseGetAutocompletion []
+                send $ ResponseGetAutocompletion []
             loop
           Right (RequestRun usePty mn identifier) -> do
             actions <- (if usePty then runStmtPty else runStmt)
@@ -170,26 +170,26 @@ mainLoop clientIO session0 = do
                   result <- runWait actions
                   case result of
                     Left output -> do
-                      putEnc $ ResponseProcessOutput output
+                      send $ ResponseProcessOutput output
                       outputLoop
                     Right done -> do
-                      putEnc $ ResponseProcessDone done
+                      send $ ResponseProcessDone done
                       writeIORef mprocessRef Nothing
             void $ withAsync sendOutput $ \_ -> loop
           Right (RequestProcessInput input) -> do
             mprocess <- readIORef mprocessRef
             case mprocess of
               Just actions -> supplyStdin actions input
-              Nothing -> putEnc ResponseNoProcessError
+              Nothing -> send ResponseNoProcessError
             loop
           Right RequestProcessKill -> do
             mprocess <- readIORef mprocessRef
             case mprocess of
               Just actions -> interrupt actions
-              Nothing -> putEnc ResponseNoProcessError
+              Nothing -> send ResponseNoProcessError
             loop
           Right RequestShutdownSession ->
-            putEnc $ ResponseShutdownSession
+            send $ ResponseShutdownSession
     ignoreProgress :: Progress -> IO ()
     ignoreProgress _ = return ()
 

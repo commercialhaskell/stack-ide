@@ -6,7 +6,7 @@ import Data.Aeson (encode)
 import Data.ByteString.Lazy.Char8 (hPutStrLn)
 import IdeSession.Client
 import IdeSession.Client.CmdLine
-import IdeSession.Client.JsonAPI (apiDocs)
+import IdeSession.Client.JsonAPI (apiDocs, toJSON, fromJSON)
 import IdeSession.Client.Util.ValueStream (newStream, nextInStream)
 import System.IO (stdin, stdout)
 
@@ -18,8 +18,8 @@ main = do
   -- values. (The parser on the Haskell side is a lot more
   -- sophisticated and deals with whitespace properly)
   let clientIO = ClientIO
-        { putJson = hPutStrLn stdout . encode
-        , getJson = nextInStream input
+        { sendResponse = hPutStrLn stdout . encode . toJSON
+        , receiveRequest = fmap fromJSON $ nextInStream input
         }
   opts <- getCommandLineOptions
   case optCommand opts of
