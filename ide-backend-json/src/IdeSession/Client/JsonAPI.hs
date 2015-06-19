@@ -22,7 +22,6 @@
 -- stable, and well documented.
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE KindSignatures #-}
 module IdeSession.Client.JsonAPI (
     -- * Requests
     Request(..)
@@ -30,20 +29,25 @@ module IdeSession.Client.JsonAPI (
   , Response(..)
   , ResponseSpanInfo(..)
   , ResponseExpType(..)
-  , VersionInfo(..)
+  , ResponseAnnExpType(..)
+  , Ann(..)
+  , CodeAnn(..)
+  , AnnSourceError(..)
+  , MsgAnn(..)
+  , CodeVariety(..)
   , AutocompletionSpan(..)
   , AutocompletionInfo(..)
+  , VersionInfo(..)
+  , Identifier
     -- * JSON API
   , apiDocs
   , toJSON
   , fromJSON
-    -- * Outputting JSON values
-  , putEnc
   ) where
 
 import Prelude hiding ((.), id)
 import Control.Category
-import Data.Aeson (Value, encode)
+import Data.Aeson (Value)
 import Data.Maybe (fromMaybe)
 import Data.Monoid
 import Data.StackPrism
@@ -51,15 +55,15 @@ import Data.StackPrism.TH
 import Data.Text (Text)
 import Language.JsonGrammar
 import Language.TypeScript.Pretty (renderDeclarationSourceFile)
-import System.IO
-import qualified Data.Aeson.Types           as Aeson
-import qualified Data.ByteString.Lazy       as Lazy
-import qualified Data.ByteString.Lazy.UTF8  as Lazy (toString, fromString)
-import qualified Data.ByteString.Lazy.Char8 as Lazy.Char8 (hPutStrLn)
-import qualified Data.Text                  as Text
+import qualified Data.Aeson.Types          as Aeson
+import qualified Data.ByteString           as BS
+import qualified Data.ByteString.Lazy      as Lazy
 
 import IdeSession.Client.JsonAPI.Aux
-import IdeSession hiding (idProp)
+import IdeSession.Client.JsonAPI.Common
+import IdeSession.Client.JsonAPI.Public
+import IdeSession.Types.Progress
+import IdeSession.Types.Public hiding (idProp, Value)
 
 {-------------------------------------------------------------------------------
   Types
@@ -67,12 +71,21 @@ import IdeSession hiding (idProp)
 
 -- | Messages sent from the editor to the client
 data Request =
+  -- Update
     RequestUpdateSession [RequestSessionUpdate]
+  -- Query
   | RequestGetSourceErrors
+  | RequestGetAnnSourceErrors
   | RequestGetLoadedModules
   | RequestGetSpanInfo SourceSpan
   | RequestGetExpTypes SourceSpan
+  | RequestGetAnnExpTypes SourceSpan
   | RequestGetAutocompletion AutocompletionSpan
+  -- Run
+  | RequestRun Bool ModuleName Identifier
+  | RequestProcessInput BS.ByteString
+  | RequestProcessKill
+  -- Misc
   | RequestShutdownSession
   deriving Show
 
@@ -80,8 +93,21 @@ data Request =
 data RequestSessionUpdate =
     RequestUpdateSourceFile FilePath Lazy.ByteString
   | RequestUpdateSourceFileFromFile FilePath
+  | RequestUpdateSourceFileDelete FilePath
+  | RequestUpdateDataFile FilePath Lazy.ByteString
+  | RequestUpdateDataFileFromFile FilePath FilePath
+  | RequestUpdateDataFileDelete FilePath
   | RequestUpdateGhcOpts [String]
-  deriving Show
+  | RequestUpdateRtsOpts [String]
+  | RequestUpdateRelativeIncludes [FilePath]
+  | RequestUpdateCodeGeneration Bool
+  | RequestUpdateEnv [(String, Maybe String)]
+  | RequestUpdateArgs [String]
+  --TODO
+  -- | RequestUpdateStdoutBufferMode
+  -- | RequestUpdateStderrBufferMode
+  -- | RequestUpdateTargets
+  deriving (Eq, Show)
 
 -- | Messages sent back from the client to the editor
 data Response =
@@ -90,27 +116,75 @@ data Response =
     -- | Nothing indicates the update completed
   | ResponseUpdateSession (Maybe Progress)
   | ResponseGetSourceErrors [SourceError]
+  | ResponseGetAnnSourceErrors [AnnSourceError]
   | ResponseGetLoadedModules [ModuleName]
   | ResponseGetSpanInfo [ResponseSpanInfo]
   | ResponseGetExpTypes [ResponseExpType]
+  | ResponseGetAnnExpTypes [ResponseAnnExpType]
   | ResponseGetAutocompletion [AutocompletionInfo]
+  -- Run
+  | ResponseProcessOutput BS.ByteString
+  | ResponseProcessDone RunResult
+  | ResponseNoProcessError
+  -- Misc
   | ResponseInvalidRequest String
   | ResponseShutdownSession
   deriving Show
 
 data ResponseSpanInfo =
     ResponseSpanInfo SpanInfo SourceSpan
-  deriving Show
+  deriving (Eq, Show)
 
 data ResponseExpType =
     ResponseExpType Text SourceSpan
-  deriving Show
+  deriving (Eq, Show)
+
+data ResponseAnnExpType =
+    ResponseAnnExpType (Ann CodeAnn) SourceSpan
+  deriving (Eq, Show)
+
+data Ann a =
+    Ann a (Ann a)
+  | AnnGroup [Ann a]
+  | AnnLeaf Text
+  deriving (Eq, Show, Functor)
+
+data CodeAnn =
+    CodeIdInfo IdInfo
+  deriving (Eq, Show)
+
+data AnnSourceError = AnnSourceError
+  { annErrorKind :: !SourceErrorKind
+  , annErrorSpan :: !EitherSpan
+  , annErrorMsg :: !(Ann MsgAnn)
+  }
+  deriving (Eq, Show)
+
+data MsgAnn =
+    MsgAnnModule
+  | MsgAnnCode CodeVariety
+  | MsgAnnCodeAnn CodeAnn
+  | MsgAnnRefactor Text [(SourceSpan, Text)]
+  | MsgAnnCollapse
+  deriving (Eq, Show)
+
+data CodeVariety =
+    ExpCode
+  | TypeCode
+  | UnknownCode
+  -- ^ When there isn't any id info, we don't know if it's an
+  -- expression or type.
+  | AmbiguousCode (Ann MsgAnn)
+  -- ^ When we can't tell whether the code is an expression or type,
+  -- default to yielding type id info.  The expression annotated code
+  -- is yielded in this annotation.
+  deriving (Eq, Show)
 
 data AutocompletionSpan = AutocompletionSpan
    { autocompletionFilePath :: FilePath
    , autocompletionPrefix :: String
    }
-   deriving Show
+   deriving (Eq, Show)
 
 data AutocompletionInfo = AutocompletionInfo
    { autocompletionInfoDefinedIn :: Text
@@ -118,14 +192,16 @@ data AutocompletionInfo = AutocompletionInfo
    , autocompletionQualifier :: Maybe Text
    , autocompletionType :: Maybe Text
    }
-   deriving Show
+   deriving (Eq, Show)
 
 -- | Client version
 --
 -- Standard versioning applies (major, minor, patch)
 data VersionInfo =
     VersionInfo Int Int Int
-  deriving Show
+  deriving (Eq, Show)
+
+type Identifier = Text
 
 {-------------------------------------------------------------------------------
   Stack prisms
@@ -133,36 +209,29 @@ data VersionInfo =
   Stack prisms are just prisms with a special kind of type. See Data.StackPrism.
 -------------------------------------------------------------------------------}
 
-$(deriveStackPrismsWith prismNameForConstructor ''Request)
-$(deriveStackPrismsWith prismNameForConstructor ''RequestSessionUpdate)
-$(deriveStackPrismsWith prismNameForConstructor ''Response)
-$(deriveStackPrismsWith prismNameForConstructor ''ResponseSpanInfo)
-$(deriveStackPrismsWith prismNameForConstructor ''ResponseExpType)
-$(deriveStackPrismsWith prismNameForConstructor ''VersionInfo)
+$(fmap concat $ mapM (deriveStackPrismsWith prismNameForConstructor)
+  [ ''Request
+  , ''RequestSessionUpdate
+  , ''Response
+  , ''ResponseSpanInfo
+  , ''ResponseExpType
+  , ''ResponseAnnExpType
+  , ''Ann
+  , ''CodeAnn
+  , ''AnnSourceError
+  , ''MsgAnn
+  , ''CodeVariety
+  , ''AutocompletionSpan
+  , ''AutocompletionInfo
+  , ''VersionInfo
+  ])
 
-$(deriveStackPrismsWith prismNameForConstructor ''EitherSpan)
-$(deriveStackPrismsWith prismNameForConstructor ''IdInfo)
-$(deriveStackPrismsWith prismNameForConstructor ''IdProp)
-$(deriveStackPrismsWith prismNameForConstructor ''IdScope)
-$(deriveStackPrismsWith prismNameForConstructor ''ModuleId)
-$(deriveStackPrismsWith prismNameForConstructor ''PackageId)
-$(deriveStackPrismsWith prismNameForConstructor ''Progress)
-$(deriveStackPrismsWith prismNameForConstructor ''SourceError)
-$(deriveStackPrismsWith prismNameForConstructor ''SourceSpan)
-$(deriveStackPrismsWith prismNameForConstructor ''AutocompletionSpan)
-$(deriveStackPrismsWith prismNameForConstructor ''AutocompletionInfo)
-$(deriveStackPrismsWith prismNameForConstructor ''SpanInfo)
-
-$(deriveStackPrismsWith prismNameForConstructor ''Maybe)
-
--- | Apply a prism to the top of the stack
-top :: StackPrism a b -> StackPrism (a :- t) (b :- t)
-top prism = stackPrism (\(a :- t) -> (forward prism a :- t))
-                       (\(b :- t) -> (:- t) `fmap` backward prism b)
-
--- | Construct a stack prism from an isomorphism
-iso :: (a -> b) -> (b -> a) -> StackPrism (a :- t) (b :- t)
-iso f g = top (stackPrism f (Just . g))
+_Just :: StackPrism (a :- t) (Maybe a :- t)
+_Just = stackPrism wrap unwrap
+  where
+    wrap (x :- t) = Just x :- t
+    unwrap (Just x :- t) = Just (x :- t)
+    unwrap (Nothing :- t) = Nothing
 
 {-------------------------------------------------------------------------------
   Translation to and from JSON
@@ -176,6 +245,8 @@ instance Json Request where
         . prop "update"
       ,   property "request" "getSourceErrors"
         . fromPrism requestGetSourceErrors
+      ,   property "request" "getAnnSourceErrors"
+        . fromPrism requestGetAnnSourceErrors
       ,   property "request" "getLoadedModules"
         . fromPrism requestGetLoadedModules
       ,   property "request" "getSpanInfo"
@@ -184,9 +255,22 @@ instance Json Request where
       ,   property "request" "getExpTypes"
         . fromPrism requestGetExpTypes
         . prop "span"
+      ,   property "request" "getAnnExpTypes"
+        . fromPrism requestGetAnnExpTypes
+        . prop "span"
       ,   property "request" "getAutocompletion"
         . fromPrism requestGetAutocompletion
         . prop "autocomplete"
+      ,   property "request" "run"
+        . fromPrism requestRun
+        . prop "usePty"
+        . prop "module"
+        . prop "identifier"
+      ,   property "request" "processInput"
+        . fromPrism requestProcessInput
+        . prop "value"
+      ,   property "request" "processKill"
+        . fromPrism requestProcessKill
       ,   property "request" "shutdownSession"
         . fromPrism requestShutdownSession
       ]
@@ -194,17 +278,58 @@ instance Json Request where
 instance Json RequestSessionUpdate where
   grammar = label "SessionUpdate" $
     object $ mconcat [
-          property "update" "updateSourceFile"
+          property "update" "sourceFile"
         . fromPrism requestUpdateSourceFile
         . prop "filePath"
         . prop "contents"
-      ,   property "update" "updateSourceFileFromFile"
+      ,   property "update" "sourceFileFromFile"
         . fromPrism requestUpdateSourceFileFromFile
         . prop "filePath"
-      ,   property "update" "updateGhcOpts"
+      ,   property "update" "sourceFileDelete"
+        . fromPrism requestUpdateSourceFileDelete
+        . prop "filePath"
+      ,   property "update" "dataFile"
+        . fromPrism requestUpdateDataFile
+        . prop "filePath"
+        . prop "contents"
+      ,   property "update" "dataFileFromFile"
+        . fromPrism requestUpdateDataFileFromFile
+        . prop "remoteFile"
+        . prop "localFile"
+      ,   property "update" "dataFileDelete"
+        . fromPrism requestUpdateDataFileDelete
+        . prop "filePath"
+      ,   property "update" "ghcOpts"
         . fromPrism requestUpdateGhcOpts
         . prop "options"
+      ,   property "update" "rtsOpts"
+        . fromPrism requestUpdateRtsOpts
+        . prop "options"
+      ,   property "update" "relativeIncludes"
+        . fromPrism requestUpdateRelativeIncludes
+        . prop "dirs"
+      ,   property "update" "codeGeneration"
+        . fromPrism requestUpdateCodeGeneration
+        . prop "enabled"
+      ,   property "update" "env"
+        . fromPrism requestUpdateEnv
+        -- TODO: This stores an array of arrays.  It'd be prettier to
+        -- use an object for it, but this seems tricky with
+        -- JsonGrammar.
+        . property "variables"
+          (array $ many (element (cons . envVariableSetting)) . nil)
+      ,   property "update" "args"
+        . fromPrism requestUpdateArgs
+        . prop "arguments"
       ]
+
+envVariableSetting :: Grammar 'Val (Value :- t) ((String, Maybe String) :- t)
+envVariableSetting = array $
+    tup2
+  -- Variable name
+  . element grammar
+  -- Variable value (if omitted, unsets the var)
+  . (element (fromPrism _Just . grammar))
 
 instance Json Response where
   grammar = label "Response" $
@@ -218,6 +343,9 @@ instance Json Response where
       ,   property "response" "getSourceErrors"
         . fromPrism responseGetSourceErrors
         . prop "errors"
+      ,   property "response" "getAnnSourceErrors"
+        . fromPrism responseGetAnnSourceErrors
+        . prop "errors"
       ,   property "response" "getLoadedModules"
         . fromPrism responseGetLoadedModules
         . prop "modules"
@@ -227,46 +355,25 @@ instance Json Response where
       ,   property "response" "getExpTypes"
         . fromPrism responseGetExpTypes
         . prop "info"
+      ,   property "response" "getAnnExpTypes"
+        . fromPrism responseGetAnnExpTypes
+        . prop "info"
       ,   property "response" "getAutocompletion"
         . fromPrism responseGetAutocompletion
         . prop "completions"
+      ,   property "response" "processOutput"
+        . fromPrism responseProcessOutput
+        . prop "value"
+      ,   property "response" "processDone"
+        . fromPrism responseProcessDone
+        . prop "result"
+      ,   property "response" "noProcessError"
+        . fromPrism responseNoProcessError
       ,   property "response" "invalidRequest"
         . fromPrism responseInvalidRequest
         . prop "errorMessage"
       ,   property "response" "shutdownSession"
         . fromPrism responseShutdownSession
-      ]
-
-instance Json VersionInfo where
-  grammar = label "VersionInfo" $
-    object $
-        fromPrism versionInfo
-      . prop "major"
-      . prop "minor"
-      . prop "patch"
-
-instance Json Progress where
-  grammar = label "Progress" $
-    object $
-        fromPrism progress
-      . prop    "step"
-      . prop    "numSteps"
-      . optProp "parsedMsg"
-      . optProp "origMsg"
-
-instance Json SourceErrorKind where
-  grammar = label "SourceErrorKind" $
-    enumeration [
-        ( KindError      , "error"      )
-      , ( KindWarning    , "warning"    )
-      , ( KindServerDied , "serverDied" )
-      ]
-
-instance Json EitherSpan where
-  grammar = label "EitherSpan" $
-    mconcat [
-        fromPrism textSpan   . grammar
-      , fromPrism properSpan . grammar
       ]
 
 instance Json AutocompletionSpan where
@@ -284,82 +391,6 @@ instance Json AutocompletionInfo where
       . prop "name"
       . optProp "qualifier"
       . optProp "type"
-
-instance Json SourceSpan where
-  grammar = label "SourceSpan" $
-    object $
-        fromPrism sourceSpan
-      . prop "filePath"
-      . prop "fromLine"
-      . prop "fromColumn"
-      . prop "toLine"
-      . prop "toColumn"
-
-instance Json SourceError where
-  grammar = label "SourceError" $
-    object $
-        fromPrism sourceError
-      . prop "kind"
-      . prop "span"
-      . prop "msg"
-
-instance Json IdInfo where
-  grammar = label "IdInfo" $
-    object $
-        fromPrism idInfo
-      . prop "prop"
-      . prop "scope"
-
-instance Json IdProp where
-  grammar = label "IdProp" $
-    object $
-        fromPrism idProp
-      . prop    "name"
-      . prop    "nameSpace"
-      . optProp "type"
-      . prop    "definedIn"
-      . prop    "defSpan"
-      . optProp "homeModule"
-
-instance Json IdScope where
-  grammar = label "IdScope" $
-    object $ mconcat [
-          property "scope" "binder"
-        . fromPrism binder
-      ,   property "scope" "local"
-        . fromPrism local
-      ,   property "scope" "imported"
-        . fromPrism imported
-        . prop "importedFrom"
-        . prop "importSpan"
-        . prop "importQual"
-      ,   property "scope" "wiredIn"
-        . fromPrism wiredIn
-      ]
-
-instance Json IdNameSpace where
-  grammar = label "IdNameSpace" $
-    enumeration [
-        ( VarName   , "varName"   )
-      , ( DataName  , "dataName"  )
-      , ( TvName    , "tvName"    )
-      , ( TcClsName , "tcClsName" )
-      ]
-
-instance Json ModuleId where
-  grammar = label "ModuleId" $
-    object $
-        fromPrism moduleId
-      . prop "name"
-      . prop "package"
-
-instance Json PackageId where
-  grammar = label "PackageId" $
-    object $
-        fromPrism packageId
-      . prop    "name"
-      . optProp "version"
-      . prop    "packageKey"
 
 instance Json ResponseSpanInfo where
   grammar = label "ResponseSpanInfo" $
@@ -380,6 +411,79 @@ instance Json ResponseExpType where
         fromPrism responseExpType
       . prop "type"
       . prop "span"
+
+instance Json ResponseAnnExpType where
+  grammar = label "ResponseAnnExpType" $
+    object $
+        fromPrism responseAnnExpType
+      . prop "type"
+      . prop "span"
+
+instance Json a => Json (Ann a) where
+  grammar = label "Ann" $ mconcat
+    [ object $
+        fromPrism ann
+      . prop "ann"
+      . prop "value"
+    ,   fromPrism annGroup . array (element grammar)
+    ,   fromPrism annLeaf . grammar
+    ]
+
+instance Json CodeAnn where
+  grammar = label "CodeAnn" $ object $ mconcat
+    [   property "label" "idInfo"
+      . fromPrism codeIdInfo
+      . prop "info"
+    ]
+
+instance Json AnnSourceError where
+  grammar = label "AnnSourceError" $
+    object $
+        fromPrism annSourceError
+      . prop "kind"
+      . prop "span"
+      . prop "msg"
+
+instance Json MsgAnn where
+  grammar = label "MsgAnn" $ mconcat
+    [ object $
+        property "label" "module"
+      . fromPrism msgAnnModule
+    , object $
+        property "label" "code"
+      . fromPrism msgAnnCode
+      . prop "variety"
+    , object $
+        property "label" "refactor"
+      . fromPrism msgAnnRefactor
+      . prop "msg"
+      . prop "replacements"
+    , object $
+        property "label" "collapse"
+      . fromPrism msgAnnCollapse
+    -- Directly use the CodeAnn grammar (Note: this means the set of
+    -- label names used by the MsgAnn and CodeAnn grammars must not
+    -- overlap)
+    , fromPrism msgAnnCodeAnn . grammar
+    ]
+
+instance Json CodeVariety where
+  grammar = label "CodeVariety" $ mconcat
+    [ fromPrism expCode . literal (Aeson.String "exp")
+    , fromPrism typeCode . literal (Aeson.String "type")
+    , fromPrism unknownCode . literal (Aeson.String "unknown")
+    , object $
+        fromPrism ambiguousCode
+      . prop "ambiguousWithExp"
+    ]
+
+instance Json VersionInfo where
+  grammar = label "VersionInfo" $
+    object $
+        fromPrism versionInfo
+      . prop "major"
+      . prop "minor"
+      . prop "patch"
 
 {-------------------------------------------------------------------------------
   Top-level API
@@ -415,41 +519,3 @@ toJSON = fromMaybe (error "toJSON: Could not serialize") . serialize grammar
 
 fromJSON :: Json a => Value -> Either String a
 fromJSON = Aeson.parseEither (parse grammar)
-
--- | Output a JSON value
---
--- We separate JSON values in the output by newlines, so that editors have a
--- means to split the input into separate values. (The parser on the Haskell
--- side is a lot more sophisticated and deals with whitespace properly.)
-putEnc :: Json a => a -> IO ()
-putEnc = Lazy.Char8.hPutStrLn stdout . encode . toJSON
-
-{-------------------------------------------------------------------------------
-  Auxiliary grammar definitions
--------------------------------------------------------------------------------}
-
-instance Json String          where grammar = string
-instance Json Lazy.ByteString where grammar = lazyByteString
-
--- | Define a grammar by enumerating the possible values
---
--- For example:
---
--- > bool :: Grammar Val (Value :- t) (Bool :- t)
--- > bool = enumeration [(True, "true"), (False, "false")]
-enumeration :: Eq a => [(a, Text)] -> Grammar Val (Value :- t) (a :- t)
-enumeration = mconcat . map aux
-  where
-    aux (a, txt) = defaultValue a . literal (Aeson.String txt)
-
--- | String literal
-string :: Grammar Val (Value :- t) (String :- t)
-string = fromPrism (iso Text.unpack Text.pack) . grammar
-
--- | Lazy bytestring literal
-lazyByteString :: Grammar Val (Value :- t) (Lazy.ByteString :- t)
-lazyByteString = fromPrism (iso Lazy.fromString Lazy.toString) . grammar
-
--- | Optional property
-optProp :: Json a => Text -> Grammar Obj t (Maybe a :- t)
-optProp propName = fromPrism just . prop propName <> fromPrism nothing

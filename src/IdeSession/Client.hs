@@ -1,52 +1,68 @@
 {-# LANGUAGE NamedFieldPuns #-}
-module Main where
+{-# LANGUAGE CPP #-}
+module IdeSession.Client
+    ( ClientIO(..)
+    , startEmptySession
+#ifdef USE_CABAL
+    , startCabalSession
+    , sendTargetsList
+#endif
+    ) where
 
-import Control.Exception
-import Control.Monad (join, mfilter)
+import Control.Applicative ((<$>))
 import Control.Arrow ((***))
+import Control.Concurrent.Async (withAsync)
+import Control.Exception
+import Control.Monad (join, mfilter, void)
+import Data.Aeson (Value)
 import Data.Function
+import Data.IORef
 import Data.List (sortBy)
 import Data.Monoid
 import Data.Ord
-import Data.Text (Text)
 import Prelude hiding (mod, span)
-import System.IO
 
+import Data.Text (Text)
 import qualified Data.Text as Text
 
 import IdeSession
-import IdeSession.Client.Cabal
+import IdeSession.Client.AnnotateHaskell (annotateType, Autocomplete)
+import IdeSession.Client.AnnotateMessage (annotateMessage)
 import IdeSession.Client.CmdLine
 import IdeSession.Client.JsonAPI
-import IdeSession.Client.Util.ValueStream
+#ifdef USE_CABAL
+import IdeSession.Client.Cabal
+#endif
 
-main :: IO ()
-main = do
-  opts@Options{..} <- getCommandLineOptions
-  case optCommand of
-    ShowAPI ->
-      putStrLn apiDocs
-    StartEmptySession opts' -> do
-      putEnc $ ResponseWelcome ideBackendClientVersion
-      startEmptySession opts opts'
-    StartCabalSession opts' -> do
-      putEnc $ ResponseWelcome ideBackendClientVersion
-      startCabalSession opts opts'
-    ListTargets fp -> do
-      putEnc $ ResponseWelcome ideBackendClientVersion
-      putEnc =<< listTargets fp
+data ClientIO = ClientIO
+    { sendResponse :: Response -> IO ()
+    , receiveRequest :: IO (Either String Request)
+    }
 
-startEmptySession :: Options -> EmptyOptions -> IO ()
-startEmptySession Options{..} EmptyOptions =
+startEmptySession :: ClientIO -> Options -> EmptyOptions -> IO ()
+startEmptySession clientIO Options{..} EmptyOptions = do
+    sendWelcome clientIO
     bracket (initSession optInitParams optConfig)
             shutdownSession
-            mainLoop
+            (mainLoop clientIO)
 
-startCabalSession :: Options -> CabalOptions -> IO ()
-startCabalSession options cabalOptions = do
+#ifdef USE_CABAL
+startCabalSession :: ClientIO -> Options -> CabalOptions -> IO ()
+startCabalSession clientIO options cabalOptions = do
+    sendWelcome clientIO
     bracket (initCabalSession options cabalOptions)
             shutdownSession
-            mainLoop
+            (mainLoop clientIO)
+
+sendTargetsList :: ClientIO -> FilePath -> IO ()
+sendTargetsList clientIO fp = do
+    sendWelcome clientIO
+    sendResponse clientIO =<< listTargets fp
+#endif
+
+sendWelcome :: ClientIO -> IO ()
+sendWelcome clientIO =
+     sendResponse clientIO $ ResponseWelcome ideBackendClientVersion
 
 -- | Version of the client API
 --
@@ -61,98 +77,125 @@ ideBackendClientVersion = VersionInfo 0 1 0
   Assumes the session has been properly initialized
 -------------------------------------------------------------------------------}
 
-type QuerySpanInfo = ModuleName -> SourceSpan -> [(SourceSpan, SpanInfo)]
-type QueryExpInfo  = ModuleName -> SourceSpan -> [(SourceSpan, Text)]
-type AutoCompInfo  = ModuleName -> String     -> [IdInfo]
-
-mainLoop :: IdeSession -> IO ()
-mainLoop session = do
-    input <- newStream stdin
-    updateSession session (updateCodeGeneration True) ignoreProgress
-    spanInfo <- getSpanInfo session -- Might not be empty (for Cabal init)
-    expTypes <- getExpTypes session
-    autoComplete <- getAutocompletion session
-    go input spanInfo expTypes autoComplete
+mainLoop :: ClientIO -> IdeSession -> IO ()
+mainLoop clientIO session0 = do
+  updateSession session0 (updateCodeGeneration True) ignoreProgress
+  mprocessRef <- newIORef Nothing
+  go session0 mprocessRef
   where
-    -- Main loop
-    --
-    -- We pass spanInfo and expInfo as argument, which are updated after every
-    -- session update (provided that there are no errors). This means that if
-    -- the session updates fails we we will the info from the previous update.
-    go :: Stream -> QuerySpanInfo -> QueryExpInfo -> AutoCompInfo -> IO ()
-    go input spanInfo expTypes autoComplete = do
-        value <- nextInStream input
-        case fromJSON value of
+    send = sendResponse clientIO
+    -- This is called after every session update that doesn't yield
+    -- compile errors.  If there are compile errors, we use the info
+    -- from the previous update.
+    go :: IdeSession -> IORef (Maybe (RunActions RunResult)) -> IO ()
+    go session mprocessRef = do
+      spanInfo <- getSpanInfo session -- Might not be empty (for Cabal init)
+      fileMap <- getFileMap session
+      expTypes <- getExpTypes session
+      autoComplete <- getAutocompletion session
+      fix $ \loop -> do
+        ereq <- receiveRequest clientIO
+        case ereq of
           Left err -> do
-            putEnc $ ResponseInvalidRequest err
+            send $ ResponseInvalidRequest err
             loop
           Right (RequestUpdateSession upd) -> do
             updateSession session (mconcat (map makeSessionUpdate upd)) $ \progress ->
-              putEnc $ ResponseUpdateSession (Just progress)
-            putEnc $ ResponseUpdateSession Nothing
-
+              send $ ResponseUpdateSession (Just progress)
+            send $ ResponseUpdateSession Nothing
             errors <- getSourceErrors session
             if all ((== KindWarning) . errorKind) errors
-              then do
-                spanInfo' <- getSpanInfo session
-                expTypes' <- getExpTypes session
-                autoComplete' <- getAutocompletion session
-                go input spanInfo' expTypes' autoComplete'
-              else do
-                loop
+              then go session mprocessRef
+              else loop
           Right RequestGetSourceErrors -> do
             errors <- getSourceErrors session
-            putEnc $ ResponseGetSourceErrors errors
+            send $ ResponseGetSourceErrors errors
+            loop
+          Right RequestGetAnnSourceErrors -> do
+            errors <- getSourceErrors session
+            send $ ResponseGetAnnSourceErrors $
+              map (annotateMessage fileMap autoComplete) errors
             loop
           Right RequestGetLoadedModules -> do
             mods <- getLoadedModules session
-            putEnc $ ResponseGetLoadedModules mods
+            send $ ResponseGetLoadedModules mods
             loop
           Right (RequestGetSpanInfo span) -> do
-            fileMap <- getFileMap session
             case fileMap (spanFilePath span) of
               Just mod -> do
                 let mkInfo (span', info) = ResponseSpanInfo info span'
-                putEnc $ ResponseGetSpanInfo
+                send $ ResponseGetSpanInfo
                        $ map mkInfo
                        $ spanInfo (moduleName mod) span
               Nothing ->
-                putEnc $ ResponseGetSpanInfo []
+                send $ ResponseGetSpanInfo []
             loop
           Right (RequestGetExpTypes span) -> do
-            fileMap <- getFileMap session
-            case fileMap (spanFilePath span) of
-              Just mod -> do
-                let mkInfo (span', info) = ResponseExpType info span'
-                putEnc $ ResponseGetExpTypes
-                      $ map mkInfo
-                      $ sortSpans
-                      $ expTypes (moduleName mod) span
-              Nothing ->
-                putEnc $ ResponseGetExpTypes []
+            send $ ResponseGetExpTypes $
+              case fileMap (spanFilePath span) of
+                Just mod ->
+                  map (\(span', info) -> ResponseExpType info span') $
+                  sortSpans $
+                  expTypes (moduleName mod) span
+                Nothing -> []
+            loop
+          Right (RequestGetAnnExpTypes span) -> do
+            send $ ResponseGetAnnExpTypes $
+              case fileMap (spanFilePath span) of
+                Just (moduleName -> mn) ->
+                  map (annotateTypeInfo (autoComplete mn)) $
+                  sortSpans $
+                  expTypes mn span
+                Nothing -> []
             loop
           Right (RequestGetAutocompletion autocmpletionSpan) -> do
-            fileMap <- getFileMap session
             case fileMap (autocompletionFilePath autocmpletionSpan) of
               Just mod -> do
                 let query = (autocompletionPrefix autocmpletionSpan)
                     splitQualifier = join (***) reverse . break (== '.') . reverse
                     (prefix, qualifierStr) = splitQualifier query
                     qualifier = mfilter (not . Text.null) (Just (Text.pack qualifierStr))
-                putEnc $ ResponseGetAutocompletion
+                send $ ResponseGetAutocompletion
                        $ filter ((== qualifier) . autocompletionQualifier)
                        $ map idInfoToAutocompletion
                        $ autoComplete (moduleName mod) prefix
               Nothing ->
-                putEnc $ ResponseGetAutocompletion []
+                send $ ResponseGetAutocompletion []
+            loop
+          Right (RequestRun usePty mn identifier) -> do
+            actions <- (if usePty then runStmtPty else runStmt)
+              session (Text.unpack mn) (Text.unpack identifier)
+            writeIORef mprocessRef (Just actions)
+            let sendOutput = fix $ \outputLoop -> do
+                  result <- runWait actions
+                  case result of
+                    Left output -> do
+                      send $ ResponseProcessOutput output
+                      outputLoop
+                    Right done -> do
+                      send $ ResponseProcessDone done
+                      writeIORef mprocessRef Nothing
+            void $ withAsync sendOutput $ \_ -> loop
+          Right (RequestProcessInput input) -> do
+            mprocess <- readIORef mprocessRef
+            case mprocess of
+              Just actions -> supplyStdin actions input
+              Nothing -> send ResponseNoProcessError
+            loop
+          Right RequestProcessKill -> do
+            mprocess <- readIORef mprocessRef
+            case mprocess of
+              Just actions -> interrupt actions
+              Nothing -> send ResponseNoProcessError
             loop
           Right RequestShutdownSession ->
-            putEnc $ ResponseShutdownSession
-      where
-        loop = go input spanInfo expTypes autoComplete
-
+            send $ ResponseShutdownSession
     ignoreProgress :: Progress -> IO ()
     ignoreProgress _ = return ()
+
+annotateTypeInfo :: Autocomplete -> (SourceSpan, Text) -> ResponseAnnExpType
+annotateTypeInfo autocomplete (span, info) =
+  ResponseAnnExpType (CodeIdInfo <$> annotateType autocomplete info) span
 
 -- | We sort the spans from thinnest to thickest. Currently
 -- ide-backend sometimes returns results unsorted, therefore for now
@@ -184,5 +227,19 @@ makeSessionUpdate (RequestUpdateSourceFile filePath contents) =
   updateSourceFile filePath contents
 makeSessionUpdate (RequestUpdateSourceFileFromFile filePath) =
   updateSourceFileFromFile filePath
+makeSessionUpdate (RequestUpdateSourceFileDelete filePath) =
+  updateSourceFileDelete filePath
+makeSessionUpdate (RequestUpdateDataFile filePath contents) =
+  updateDataFile filePath contents
+makeSessionUpdate (RequestUpdateDataFileFromFile remoteFile localFile) =
+  updateDataFileFromFile remoteFile localFile
+makeSessionUpdate (RequestUpdateDataFileDelete filePath) =
+  updateDataFileDelete filePath
 makeSessionUpdate (RequestUpdateGhcOpts options) =
   updateGhcOpts options
+makeSessionUpdate (RequestUpdateRtsOpts options) =
+  updateRtsOpts options
+makeSessionUpdate (RequestUpdateEnv variables) =
+  updateEnv variables
+makeSessionUpdate (RequestUpdateArgs args) =
+  updateArgs args
