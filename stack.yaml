@@ -4,10 +4,13 @@ flags:
 packages:
 - ide-backend-client
 - ide-backend-json
-# ide-backend is from https://github.com/fpco/ide-backend
 - ../ide-backend/ide-backend 
 - ../ide-backend/ide-backend-rts 
 - ../ide-backend/ide-backend-server
+- ../ide-backend/ide-backend-common
+- location:
+    git: https://github.com/mgsloan/JsonGrammar2/
+    commit: f952cca5c357089f585f0101012e531fa7c2d38c
 resolver: lts-2.14
 extra-deps:
 - JsonGrammar-1.0.1
