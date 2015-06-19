@@ -1,0 +1,15 @@
+flags:
+  ide-backend-client:
+    use-cabal: false
+packages:
+- ide-backend-client
+- ide-backend-json
+# ide-backend is from https://github.com/fpco/ide-backend
+- ../ide-backend/ide-backend 
+- ../ide-backend/ide-backend-rts 
+- ../ide-backend/ide-backend-server
+resolver: lts-2.14
+extra-deps:
+- JsonGrammar-1.0.1
+- language-typescript-0.0.4
+- stack-prism-0.1.4
