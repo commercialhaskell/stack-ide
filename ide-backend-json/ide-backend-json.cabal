@@ -3,7 +3,7 @@ version:             0.1.0.0
 -- synopsis:
 -- description:
 -- license:
-license-file:        ../LICENSE
+license-file:        LICENSE
 author:              Edsko de Vries
 maintainer:          edsko@well-typed.com
 -- copyright:
