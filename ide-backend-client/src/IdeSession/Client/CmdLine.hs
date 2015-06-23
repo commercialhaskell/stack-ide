@@ -135,6 +135,14 @@ parseConfig = SessionConfig
           , showDefault
           , help "Directory to use to store the session files"
           ])
+    <*> (optional . strOption $ mconcat [
+            long "local-work-dir"
+          , metavar "DIR"
+          , helpDoc . Just $ Doc.vcat [
+                "Directory to find the source and data files."
+              , "If this is passed, then there's no need for the editor to send the source / data files to the backend.  Instead, it just directly uses the files."
+              ]
+          ])
     <*> (defaultTo configExtraPathDirs . fmap splitSearchPath' . strOption $ mconcat [
             long "path"
           , metavar "PATH"
