@@ -116,15 +116,20 @@ parseInitParams = SessionInitParams
               , "Can be used multiple times; overrides default if used."
               ]
           ])
+    <*> (defaultTo sessionInitDistDir . optional . strOption $ mconcat [
+            long "dist-dir"
+          , metavar "DIR"
+          , helpDoc . Just $ Doc.vcat [
+                "Directory for build artifacts. Defaults to: dist/"
+              ]
+          ])
   where
     useDefault :: (SessionInitParams -> a) -> Parser a
     useDefault fld = pure (fld defaultSessionInitParams)
 
-    defaultTo :: (SessionInitParams -> [a]) -> Parser [a] -> Parser [a]
+    defaultTo :: (Alternative f) => (SessionInitParams -> f a) -> Parser (f a) -> Parser (f a)
     defaultTo fld = fmap $ \xs ->
-      case xs of
-        [] -> fld defaultSessionInitParams
-        _  -> xs
+      xs <|> fld defaultSessionInitParams
 
 parseConfig :: Parser SessionConfig
 parseConfig = SessionConfig
