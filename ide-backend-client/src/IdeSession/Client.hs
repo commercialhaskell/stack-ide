@@ -243,3 +243,5 @@ makeSessionUpdate (RequestUpdateEnv variables) =
   updateEnv variables
 makeSessionUpdate (RequestUpdateArgs args) =
   updateArgs args
+makeSessionUpdate (RequestUpdateTargets targets) =
+  updateTargets targets

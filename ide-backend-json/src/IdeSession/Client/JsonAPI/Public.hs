@@ -35,6 +35,7 @@ $(fmap concat $ mapM (deriveStackPrismsWith prismNameForConstructor)
   , ''SourceSpan
   , ''SpanInfo
   , ''RunResult
+  , ''Targets
   ])
 
 {-------------------------------------------------------------------------------
@@ -156,4 +157,15 @@ instance Json RunResult where
       . fromPrism runForceCancelled
     ,   property "status" "break"
       . fromPrism runBreak
+    ]
+
+instance Json Targets where
+  grammar = label "Targets" $
+    object $ mconcat [
+        property "type" "include"
+      . fromPrism targetsInclude
+      . prop "paths"
+    ,   property "type" "exclude"
+      . fromPrism targetsExclude
+      . prop "paths"
     ]

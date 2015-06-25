@@ -106,7 +106,7 @@ data RequestSessionUpdate =
   --TODO
   -- | RequestUpdateStdoutBufferMode
   -- | RequestUpdateStderrBufferMode
-  -- | RequestUpdateTargets
+  | RequestUpdateTargets Targets
   deriving (Eq, Show)
 
 -- | Messages sent back from the client to the editor
@@ -321,6 +321,9 @@ instance Json RequestSessionUpdate where
       ,   property "update" "updateArgs"
         . fromPrism requestUpdateArgs
         . prop "arguments"
+      ,   property "update" "updateTargets"
+        . fromPrism requestUpdateTargets
+        . prop "targets"
       ]
 
 envVariableSetting :: Grammar 'Val (Value :- t) ((String, Maybe String) :- t)
