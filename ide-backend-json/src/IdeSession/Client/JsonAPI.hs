@@ -278,47 +278,47 @@ instance Json Request where
 instance Json RequestSessionUpdate where
   grammar = label "SessionUpdate" $
     object $ mconcat [
-          property "update" "sourceFile"
+          property "update" "updateSourceFile"
         . fromPrism requestUpdateSourceFile
         . prop "filePath"
         . prop "contents"
-      ,   property "update" "sourceFileFromFile"
+      ,   property "update" "updateSourceFileFromFile"
         . fromPrism requestUpdateSourceFileFromFile
         . prop "filePath"
-      ,   property "update" "sourceFileDelete"
+      ,   property "update" "updateSourceFileDelete"
         . fromPrism requestUpdateSourceFileDelete
         . prop "filePath"
-      ,   property "update" "dataFile"
+      ,   property "update" "updateDataFile"
         . fromPrism requestUpdateDataFile
         . prop "filePath"
         . prop "contents"
-      ,   property "update" "dataFileFromFile"
+      ,   property "update" "updateDataFileFromFile"
         . fromPrism requestUpdateDataFileFromFile
         . prop "remoteFile"
         . prop "localFile"
-      ,   property "update" "dataFileDelete"
+      ,   property "update" "updateDataFileDelete"
         . fromPrism requestUpdateDataFileDelete
         . prop "filePath"
-      ,   property "update" "ghcOpts"
+      ,   property "update" "updateGhcOpts"
         . fromPrism requestUpdateGhcOpts
         . prop "options"
-      ,   property "update" "rtsOpts"
+      ,   property "update" "updateRtsOpts"
         . fromPrism requestUpdateRtsOpts
         . prop "options"
-      ,   property "update" "relativeIncludes"
+      ,   property "update" "updateRelativeIncludes"
         . fromPrism requestUpdateRelativeIncludes
         . prop "dirs"
-      ,   property "update" "codeGeneration"
+      ,   property "update" "updateCodeGeneration"
         . fromPrism requestUpdateCodeGeneration
         . prop "enabled"
-      ,   property "update" "env"
+      ,   property "update" "updateEnv"
         . fromPrism requestUpdateEnv
         -- TODO: This stores an array of arrays.  It'd be prettier to
         -- use an object for it, but this seems tricky with
         -- JsonGrammar.
         . property "variables"
           (array $ many (element (cons . envVariableSetting)) . nil)
-      ,   property "update" "args"
+      ,   property "update" "updateArgs"
         . fromPrism requestUpdateArgs
         . prop "arguments"
       ]
