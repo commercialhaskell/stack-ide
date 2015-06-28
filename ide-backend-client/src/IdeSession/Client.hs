@@ -102,7 +102,7 @@ mainLoop clientIO session0 = do
             loop
           Right (RequestUpdateSession upd) -> do
             updateSession session (mconcat (map makeSessionUpdate upd)) $ \progress ->
-              send $ ResponseUpdateSession (Just progress)
+              send $ ResponseUpdateSession (Just (Orphan progress))
             send $ ResponseUpdateSession Nothing
             errors <- getSourceErrors session
             if all ((== KindWarning) . errorKind) errors
@@ -224,27 +224,30 @@ idInfoToAutocompletion IdInfo{idProp = IdProp{idName, idDefinedIn, idType}, idSc
                      WiredIn                -> Nothing
 
 makeSessionUpdate :: RequestSessionUpdate -> IdeSessionUpdate
-makeSessionUpdate (RequestUpdateSourceFile filePath contents) =
-  updateSourceFile filePath contents
-makeSessionUpdate (RequestUpdateSourceFileFromFile filePath) =
-  updateSourceFileFromFile filePath
-makeSessionUpdate (RequestUpdateSourceFileDelete filePath) =
-  updateSourceFileDelete filePath
-makeSessionUpdate (RequestUpdateDataFile filePath contents) =
-  updateDataFile filePath contents
-makeSessionUpdate (RequestUpdateDataFileFromFile remoteFile localFile) =
-  updateDataFileFromFile remoteFile localFile
-makeSessionUpdate (RequestUpdateDataFileDelete filePath) =
-  updateDataFileDelete filePath
-makeSessionUpdate (RequestUpdateGhcOpts options) =
-  updateGhcOpts options
-makeSessionUpdate (RequestUpdateRtsOpts options) =
-  updateRtsOpts options
-makeSessionUpdate (RequestUpdateEnv variables) =
-  updateEnv variables
-makeSessionUpdate (RequestUpdateArgs args) =
-  updateArgs args
-makeSessionUpdate (RequestUpdateTargets targets) =
+makeSessionUpdate (RequestUpdateTargets (RequestTargets targets)) =
   updateTargets targets
-makeSessionUpdate (RequestUpdateRelativeIncludes _) = error "FIXME: RequestUpdateRelativeIncludes"
-makeSessionUpdate (RequestUpdateCodeGeneration _) = error "FIXME: RequestUpdateCodeGeneration"
+
+-- TODO:
+{-makeSessionUpdate (RequestUpdateSourceFile filePath contents) =
+  updateSourceFile filePath contents-}
+{-makeSessionUpdate (RequestUpdateSourceFileFromFile filePath) =
+  updateSourceFileFromFile filePath-}
+{-makeSessionUpdate (RequestUpdateSourceFileDelete filePath) =
+  updateSourceFileDelete filePath-}
+{-makeSessionUpdate (RequestUpdateDataFile filePath contents) =
+  updateDataFile filePath contents-}
+{-makeSessionUpdate (RequestUpdateDataFileFromFile remoteFile localFile) =
+  updateDataFileFromFile remoteFile localFile-}
+{-makeSessionUpdate (RequestUpdateDataFileDelete filePath) =
+  updateDataFileDelete filePath-}
+{-makeSessionUpdate (RequestUpdateGhcOpts options) =
+  updateGhcOpts options-}
+{-makeSessionUpdate (RequestUpdateRtsOpts options) =
+  updateRtsOpts options-}
+{-makeSessionUpdate (RequestUpdateEnv variables) =
+  updateEnv variables-}
+{-makeSessionUpdate (RequestUpdateArgs args) =
+  updateArgs args-}
+
+{-makeSessionUpdate (RequestUpdateRelativeIncludes _) = error "FIXME: RequestUpdateRelativeIncludes"-}
+{-makeSessionUpdate (RequestUpdateCodeGeneration _) = error "FIXME: RequestUpdateCodeGeneration"-}
