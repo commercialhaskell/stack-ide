@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -16,8 +18,7 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Typeable (Typeable, cast)
 import           Debug.Trace (trace)
-import           IdeSession.Client.JsonAPI (Ann(..))
-import           IdeSession.Client.JsonAPI.Common (sliceSpans)
+import           IdeSession.Client.JsonAPI (Ann(..),sliceSpans)
 import           IdeSession.Types.Public (IdInfo(..), IdProp(..), IdNameSpace(..), idInfoQN)
 import           Language.Haskell.Exts.Annotated hiding (Ann, VarName)
 

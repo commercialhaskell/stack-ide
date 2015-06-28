@@ -16,29 +16,10 @@ library
   hs-source-dirs:      src
   exposed-modules:     IdeSession.Client.JsonAPI
                        IdeSession.Client.JsonAPI.Aux
-                       IdeSession.Client.JsonAPI.Common
-                       IdeSession.Client.JsonAPI.Public
   build-depends:       base                 >= 4.5  && < 5,
                        ide-backend-common   >= 0.9  && < 0.10,
                        aeson                >= 0.7  && < 0.9,
                        bytestring           >= 0.10 && < 0.11,
-                       JsonGrammar          >= 1.0  && < 1.1,
-                       language-typescript  >= 0.0  && < 0.1,
-                       stack-prism          >= 0.1  && < 0.2,
-                       text                 >= 1.1  && < 1.3,
-                       utf8-string          >= 0.3  && < 1.1
+                       text                 >= 1.1  && < 1.3
   default-language:    Haskell2010
-  ghc-options:         -Wall -fno-warn-orphans
-  default-extensions:  DataKinds
-                       FlexibleInstances
-                       NoMonomorphismRestriction
-                       OverlappingInstances
-                       RankNTypes
-                       RecordWildCards
-                       StandaloneDeriving
-                       TypeOperators
-                       BangPatterns
-                       KindSignatures
-                       DeriveFunctor
-  other-extensions:    OverloadedStrings
-                       TemplateHaskell
+  ghc-options:         -Wall

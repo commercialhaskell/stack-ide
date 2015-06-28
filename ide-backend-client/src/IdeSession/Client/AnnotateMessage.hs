@@ -1,3 +1,5 @@
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 -- | This module defines a function 'annotateMessage', which attempts to add some
 --   helpful structure to GHC errors and warnings.

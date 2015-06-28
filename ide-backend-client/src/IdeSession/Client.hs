@@ -1,3 +1,5 @@
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE CPP #-}
 module IdeSession.Client
@@ -14,7 +16,6 @@ import Control.Arrow ((***))
 import Control.Concurrent.Async (withAsync)
 import Control.Exception
 import Control.Monad (join, mfilter, void)
-import Data.Aeson (Value)
 import Data.Function
 import Data.IORef
 import Data.List (sortBy)
@@ -245,3 +246,5 @@ makeSessionUpdate (RequestUpdateArgs args) =
   updateArgs args
 makeSessionUpdate (RequestUpdateTargets targets) =
   updateTargets targets
+makeSessionUpdate (RequestUpdateRelativeIncludes _) = error "FIXME: RequestUpdateRelativeIncludes"
+makeSessionUpdate (RequestUpdateCodeGeneration _) = error "FIXME: RequestUpdateCodeGeneration"

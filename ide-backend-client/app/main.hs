@@ -2,11 +2,13 @@
 
 module Main where
 
-import Data.Aeson (encode)
+import Data.Aeson
+import Data.Aeson.Parser
+import Data.Aeson.Types
 import Data.ByteString.Lazy.Char8 (hPutStrLn)
 import IdeSession.Client
 import IdeSession.Client.CmdLine
-import IdeSession.Client.JsonAPI (apiDocs, toJSON, fromJSON)
+import IdeSession.Client.JsonAPI ()
 import IdeSession.Client.Util.ValueStream (newStream, nextInStream)
 import System.IO (stdin, stdout)
 
@@ -21,19 +23,8 @@ main = do
         { sendResponse = hPutStrLn stdout . encode . toJSON
         , receiveRequest = fmap fromJSON $ nextInStream input
         }
+        where fromJSON = parseEither parseJSON
   opts <- getCommandLineOptions
   case optCommand opts of
-    ShowAPI -> putStrLn apiDocs
+    ShowAPI -> putStrLn "TODO: API"
     StartEmptySession opts' -> startEmptySession clientIO opts opts'
-#ifdef USE_CABAL
-    StartCabalSession opts' -> startCabalSession clientIO opts opts'
-    ListTargets opts' -> sendTargetsList clientIO opts opts'
-#else
-    StartCabalSession _ -> notBuiltWithCabal
-    ListTargets _ -> notBuiltWithCabal
-#endif
-
-notBuiltWithCabal :: IO ()
-notBuiltWithCabal = putStrLn $
-    "ide-backend-client not built with Cabal, so it cannot be used with cabal projects.  " ++
-    "Build it with -fuse-cabal in order to use this functionality."
