@@ -1,4 +1,4 @@
-module IdeSession.Client.Cabal (
+module Stack.Ide.Cabal (
     listTargets
   , initCabalSession
   ) where
@@ -20,8 +20,8 @@ import qualified Distribution.Simple.Compiler as C
 import Language.Haskell.Extension
 
 import IdeSession
-import IdeSession.Client.CmdLine
-import IdeSession.Client.JsonAPI
+import Stack.Ide.CmdLine
+import Stack.Ide.JsonAPI
 
 {-------------------------------------------------------------------------------
   Top-level API

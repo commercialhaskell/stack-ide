@@ -19,7 +19,7 @@
 -- Hopefully with these principles in place the API should be predictable,
 -- stable, and well documented.
 
-module IdeSession.Client.JsonAPI (
+module Stack.Ide.JsonAPI (
     -- * Requests
     Request(..)
   , RequestSessionUpdate(..)
@@ -54,7 +54,7 @@ import Data.Monoid
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text as Text
-import IdeSession.Client.JsonAPI.Aux
+import Stack.Ide.JsonAPI.Aux
 import IdeSession.Types.Progress
 import IdeSession.Types.Public hiding (idProp, Value)
 import qualified Data.Text.Encoding as T

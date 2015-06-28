@@ -1,6 +1,6 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
-module IdeSession.Client.CmdLine (
+module Stack.Ide.CmdLine (
     -- * Types
     Options(..)
   , Command(..)

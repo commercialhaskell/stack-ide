@@ -2,7 +2,7 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE CPP #-}
-module IdeSession.Client
+module Stack.Ide
     ( ClientIO(..)
     , startEmptySession
 #ifdef USE_CABAL
@@ -27,12 +27,12 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 
 import IdeSession
-import IdeSession.Client.AnnotateHaskell (annotateType, Autocomplete)
-import IdeSession.Client.AnnotateMessage (annotateMessage)
-import IdeSession.Client.CmdLine
-import IdeSession.Client.JsonAPI
+import Stack.Ide.AnnotateHaskell (annotateType, Autocomplete)
+import Stack.Ide.AnnotateMessage (annotateMessage)
+import Stack.Ide.CmdLine
+import Stack.Ide.JsonAPI
 #ifdef USE_CABAL
-import IdeSession.Client.Cabal
+import Stack.Ide.Cabal
 #endif
 
 data ClientIO = ClientIO

@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- | This module defines a function 'annotateMessage', which attempts to add some
 --   helpful structure to GHC errors and warnings.
-module IdeSession.Client.AnnotateMessage (annotateMessage) where
+module Stack.Ide.AnnotateMessage (annotateMessage) where
 
 import           Control.Applicative ((<$>))
 import           Control.Exception
@@ -17,8 +17,8 @@ import qualified Data.Text as T
 import qualified Data.Text.ICU as ICU
 import qualified Data.Text.ICU.Error as ICU
 import           Debug.Trace (trace)
-import           IdeSession.Client.AnnotateHaskell
-import           IdeSession.Client.JsonAPI (AnnSourceError(..), Ann(..), MsgAnn(..), CodeAnn(..), CodeVariety(..))
+import           Stack.Ide.AnnotateHaskell
+import           Stack.Ide.JsonAPI (AnnSourceError(..), Ann(..), MsgAnn(..), CodeAnn(..), CodeVariety(..))
 import           IdeSession.Types.Public (SourceError(..), SourceErrorKind(..), SourceSpan(..), EitherSpan(..), ModuleId(..), ModuleName)
 import           Prelude
 import           Safe (headMay, lastMay)

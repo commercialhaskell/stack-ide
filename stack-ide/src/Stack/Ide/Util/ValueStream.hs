@@ -1,5 +1,5 @@
 -- | Simple stream wrapper around attoparsec
-module IdeSession.Client.Util.ValueStream (
+module Stack.Ide.Util.ValueStream (
     Stream
   , newStream
   , nextInStream

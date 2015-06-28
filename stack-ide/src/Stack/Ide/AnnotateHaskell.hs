@@ -3,7 +3,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module IdeSession.Client.AnnotateHaskell
+module Stack.Ide.AnnotateHaskell
   ( Autocomplete
   , annotateType
   , annotateExp
@@ -18,7 +18,7 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Typeable (Typeable, cast)
 import           Debug.Trace (trace)
-import           IdeSession.Client.JsonAPI (Ann(..),sliceSpans)
+import           Stack.Ide.JsonAPI (Ann(..),sliceSpans)
 import           IdeSession.Types.Public (IdInfo(..), IdProp(..), IdNameSpace(..), idInfoQN)
 import           Language.Haskell.Exts.Annotated hiding (Ann, VarName)
 

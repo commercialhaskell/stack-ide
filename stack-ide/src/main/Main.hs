@@ -6,10 +6,10 @@ import Data.Aeson
 import Data.Aeson.Parser
 import Data.Aeson.Types
 import Data.ByteString.Lazy.Char8 (hPutStrLn)
-import IdeSession.Client
-import IdeSession.Client.CmdLine
-import IdeSession.Client.JsonAPI ()
-import IdeSession.Client.Util.ValueStream (newStream, nextInStream)
+import Stack.Ide
+import Stack.Ide.CmdLine
+import Stack.Ide.JsonAPI ()
+import Stack.Ide.Util.ValueStream (newStream, nextInStream)
 import System.IO (stdin, stdout)
 
 main :: IO ()
