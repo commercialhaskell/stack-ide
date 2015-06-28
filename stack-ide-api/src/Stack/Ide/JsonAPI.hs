@@ -72,9 +72,9 @@ data Request =
   | RequestGetSourceErrors
   | RequestGetAnnSourceErrors
   | RequestGetLoadedModules
-  | RequestGetSpanInfo SourceSpan
-  | RequestGetExpTypes SourceSpan
-  | RequestGetAnnExpTypes SourceSpan
+  | RequestGetSpanInfo (Orphan SourceSpan)
+  | RequestGetExpTypes (Orphan SourceSpan)
+  | RequestGetAnnExpTypes (Orphan SourceSpan)
   | RequestGetAutocompletion AutocompletionSpan
   -- Run
   | RequestRun Bool ModuleName Identifier
@@ -89,35 +89,54 @@ instance FromJSON Request where
         cmd <- o .: "tag" :: Parser Text
         case cmd of
             "UpdateSession" -> do
-                updates <- o .: "payload"
+                updates <- o .: "contents"
                 pure (RequestUpdateSession updates)
             "GetSourceErrors" -> pure RequestGetSourceErrors
             "GetAnnSourceErrors" -> pure RequestGetAnnSourceErrors
             "GetLoadedModules" -> pure RequestGetLoadedModules
             "GetSpanInfo" -> do
-                span <- o .: "payload"
+                span <- o .: "contents"
                 pure (RequestGetSpanInfo span)
             "GetExpTypes" -> do
-                span <- o .: "payload"
+                span <- o .: "contents"
                 pure (RequestGetExpTypes span)
             "GetAnnExpTypes" -> do
-                span <- o .: "payload"
+                span <- o .: "contents"
                 pure (RequestGetAnnExpTypes span)
             "GetAutocompletion" -> do
-                span <- o .: "payload"
+                span <- o .: "contents"
                 pure (RequestGetAutocompletion span)
             "Run" -> do
-                payload <- o .: "payload"
+                payload <- o .: "contents"
                 pty <- payload .: "usePty"
                 mn <- payload .: "moduleName"
                 ident <- payload .: "identifier"
                 pure (RequestRun pty mn ident)
             "ProcessInput" -> do
-                i <- o .: "payload"
+                i <- o .: "contents"
                 pure (RequestProcessInput (S8.pack i))
             "ProcessKill" -> pure RequestProcessKill
             "ShutdownSession" -> pure RequestShutdownSession
             _ -> fail (T.unpack ("Invalid command type: " <> cmd))
+
+instance FromJSON (Orphan SourceSpan) where
+    parseJSON j = do
+        o <- parseJSON j
+        filePath <- o .: "filePath"
+        fromLine <- o .: "fromLine"
+        fromColumn <- o .: "fromColumn"
+        toLine <- o .: "toLine"
+        toColumn <- o .: "toColumn"
+        return (Orphan (SourceSpan filePath fromLine fromColumn toLine toColumn))
+
+instance ToJSON (Orphan SourceSpan) where
+    toJSON (Orphan (SourceSpan filePath fromLine fromColumn toLine toColumn)) =
+        object
+            [ "filePath" .= filePath
+            , "fromLine" .= fromLine
+            , "fromColumn" .= fromColumn
+            , "toLine" .= toLine
+            , "toColumn" .= toColumn]
 
 -- | Session updates
 data RequestSessionUpdate
@@ -134,10 +153,10 @@ instance FromJSON RequestTargets where
         tag <- o .: "tag" :: Parser Text
         case tag of
             "include" -> do
-                fps <- o .: "payload"
+                fps <- o .: "contents"
                 pure (RequestTargets (TargetsInclude fps))
             "exclude" -> do
-                fps <- o .: "payload"
+                fps <- o .: "contents"
                 pure (RequestTargets (TargetsExclude fps))
 
 -- TODO:
@@ -156,7 +175,7 @@ instance FromJSON RequestSessionUpdate where
         cmd <- o .: "tag" :: Parser Text
         case cmd of
             "UpdateTargets" -> do
-                targets <- o .: "payload"
+                targets <- o .: "contents"
                 pure (RequestUpdateTargets targets)
             _ -> fail (T.unpack ("Invalid session update type: " <> cmd))
 
@@ -185,40 +204,40 @@ instance ToJSON Response where
     toJSON o =
         case o of
             ResponseWelcome versionInfo ->
-                object ["tag" .= "Welcome", "payload" .= versionInfo]
+                object ["tag" .= "Welcome", "contents" .= versionInfo]
             ResponseUpdateSession mprogress ->
                 object
                     (concat
                          [ ["tag" .= "UpdateSession"]
-                         , ["payload" .= p | Just p <- [mprogress]]])
+                         , ["contents" .= p | Just p <- [mprogress]]])
             ResponseGetSourceErrors errs ->
-                object ["tag" .= "GetSourceErrors", "payload" .= errs]
+                object ["tag" .= "GetSourceErrors", "contents" .= errs]
             ResponseGetAnnSourceErrors anerrs ->
-                object ["tag" .= "GetAnnSourceErrors", "payload" .= anerrs]
+                object ["tag" .= "GetAnnSourceErrors", "contents" .= anerrs]
             ResponseGetLoadedModules ms ->
-                object ["tag" .= "GetLoadedModules", "payload" .= ms]
+                object ["tag" .= "GetLoadedModules", "contents" .= ms]
             ResponseGetSpanInfo infos ->
-                object ["tag" .= "GetSpanInfo", "payload" .= infos]
+                object ["tag" .= "GetSpanInfo", "contents" .= infos]
             ResponseGetExpTypes types ->
-                object ["tag" .= "GetExpTypes", "payload" .= types]
+                object ["tag" .= "GetExpTypes", "contents" .= types]
             ResponseGetAnnExpTypes anntypes ->
-                object ["tag" .= "GetAnnExpTypes", "payload" .= anntypes]
+                object ["tag" .= "GetAnnExpTypes", "contents" .= anntypes]
             ResponseGetAutocompletion autoinfos ->
-                object ["tag" .= "GetAutocompletion", "payload" .= autoinfos]
+                object ["tag" .= "GetAutocompletion", "contents" .= autoinfos]
             ResponseProcessOutput bs ->
-                object ["tag" .= "ProcessOutput", "payload" .= S8.unpack bs]
+                object ["tag" .= "ProcessOutput", "contents" .= S8.unpack bs]
             ResponseProcessDone result ->
-                object ["tag" .= "ProcessDone", "payload" .= result]
+                object ["tag" .= "ProcessDone", "contents" .= result]
             ResponseNoProcessError -> object ["tag" .= "NoProcessError"]
             ResponseInvalidRequest err ->
-                object ["tag" .= "InvalidRequest", "payload" .= err]
+                object ["tag" .= "InvalidRequest", "contents" .= err]
             ResponseShutdownSession -> object ["tag" .= "ShutdownSession"]
 
 instance ToJSON (Orphan Progress) where
     toJSON (Orphan (Progress step num parsed orig)) =
         object
             [ "tag" .= "progress"
-            , "payload" .=
+            , "contents" .=
               object
                   (concat
                        [ ["step" .= step, "num" .= num]
@@ -226,31 +245,105 @@ instance ToJSON (Orphan Progress) where
                        , ["orig" .= o | Just o <- [orig]]])]
 
 data ResponseSpanInfo =
-    ResponseSpanInfo SpanInfo SourceSpan
+    ResponseSpanInfo (Orphan SpanInfo) (Orphan SourceSpan)
 
 instance ToJSON ResponseSpanInfo where
     toJSON (ResponseSpanInfo info span) =
         object
             [ "tag" .= "SpanInfo"
-            , "payload" .= object ["info" .= info, "span" .= span]]
+            , "contents" .= object ["info" .= info, "span" .= span]]
+
+instance ToJSON (Orphan SpanInfo) where
+    toJSON (Orphan sum) =
+        case sum of
+            SpanId id ->
+                object ["tag" .= "SpanId", "contents" .= toJSON (Orphan id)]
+            SpanQQ id ->
+                object ["tag" .= "SpanQQ", "contents" .= toJSON (Orphan id)]
+
+instance ToJSON (Orphan IdInfo) where
+    toJSON (Orphan (IdInfo prop scope)) =
+        object
+            [ "tag" .= "IdInfo"
+            , "contents" .=
+              object ["prop" .= Orphan prop, "scope" .= Orphan scope]]
+
+instance ToJSON (Orphan IdProp) where
+    toJSON (Orphan (IdProp name space typ defined defspan home)) =
+        object
+            [ "tag" .= "IdProp"
+            , "contents" .=
+              object
+                  (concat
+                       [ [ "name" .= (name :: Text)
+                         , "space" .= Orphan space
+                         , "definedIn" .= Orphan defined
+                         , "defSpan" .= Orphan defspan]
+                       , ["type" .= (t :: Text) | Just t <- [typ]]
+                       , ["homeModule" .= Orphan t | Just t <- [home]]])]
+
+instance ToJSON (Orphan IdNameSpace) where
+    toJSON (Orphan sum) =
+        object ["tag" .= case sum of
+                           VarName -> "VarName"
+                           DataName -> "DataName"
+                           TvName -> "TvName"
+                           TcClsName -> "TcClsName"]
+
+instance ToJSON (Orphan IdScope) where
+    toJSON (Orphan sum) =
+        case sum of
+            Binder -> object ["tag" .= "Binder"]
+            Local -> object ["tag" .= "Local"]
+            Imported from span qual ->
+                object
+                    [ "tag" .= "Imported"
+                    , "contents" .=
+                      object
+                          [ "from" .= Orphan from
+                          , "span" .= Orphan span
+                          , "qual" .= qual]]
+
+instance ToJSON (Orphan EitherSpan) where
+    toJSON (Orphan sum) =
+        case sum of
+            ProperSpan srcspan ->
+                object ["tag" .= "ProperSpan", "contents" .= Orphan srcspan]
+            TextSpan text -> object ["tag" .= "TextSpan", "contents" .= text]
+
+instance ToJSON (Orphan ModuleId) where
+    toJSON (Orphan (ModuleId mo pkg)) =
+        object
+            [ "tag" .= "ModuleId"
+            , "contents" .= object ["name" .= mo, "package" .= Orphan pkg]]
+
+instance ToJSON (Orphan PackageId) where
+    toJSON (Orphan (PackageId name ver key)) =
+        object
+            [ "tag" .= "PackageId"
+            , "contents" .=
+              object
+                  (concat
+                       [ ["name" .= name, "key" .= key]
+                       , ["version" .= v | Just v <- [ver]]])]
 
 data ResponseExpType =
-    ResponseExpType Text SourceSpan
+    ResponseExpType Text (Orphan SourceSpan)
 
 instance ToJSON ResponseExpType where
     toJSON (ResponseExpType text span) =
         object
             [ "tag" .= "ExpType"
-            , "payload" .= object ["text" .= text, "span" .= span]]
+            , "contents" .= object ["text" .= text, "span" .= span]]
 
 data ResponseAnnExpType =
-    ResponseAnnExpType (Ann CodeAnn) SourceSpan
+    ResponseAnnExpType (Ann CodeAnn) (Orphan SourceSpan)
 
 instance ToJSON ResponseAnnExpType where
     toJSON (ResponseAnnExpType ann span) =
         object
             [ "tag" .= "ExpType"
-            , "payload" .= object ["ann" .= ann, "span" .= span]]
+            , "contents" .= object ["ann" .= ann, "span" .= span]]
 
 data Ann a =
     Ann a (Ann a)
@@ -259,24 +352,20 @@ data Ann a =
   deriving (Functor)
 
 instance ToJSON a => ToJSON (Ann a) where
-    toJSON (Ann a x) = object ["tag" .= "Ann", "payload" .= x]
-    toJSON (AnnGroup xs) = object ["tag" .= "AnnGroup", "payload" .= xs]
-    toJSON (AnnLeaf t) = object ["tag" .= "AnnLeaf", "payload" .= t]
+    toJSON (Ann a x) = object ["tag" .= "Ann", "contents" .= x]
+    toJSON (AnnGroup xs) = object ["tag" .= "AnnGroup", "contents" .= xs]
+    toJSON (AnnLeaf t) = object ["tag" .= "AnnLeaf", "contents" .= t]
 
 data CodeAnn =
     CodeIdInfo IdInfo
 
 instance ToJSON CodeAnn where
     toJSON (CodeIdInfo info) =
-        object ["tag" .= "CodeAnn", "payload" .= Orphan info]
+        object ["tag" .= "CodeAnn", "contents" .= Orphan info]
 
 newtype Orphan a = Orphan
     { orphan :: a
     }
-
-instance ToJSON (Orphan IdInfo) where
-    toJSON (Orphan (IdInfo prop scope)) =
-        object ["tag" .= "IdInfo", "payload" .= object ["prop" .= prop]]
 
 data AnnSourceError = AnnSourceError
   { annErrorKind :: !SourceErrorKind
@@ -288,31 +377,31 @@ instance ToJSON AnnSourceError where
     toJSON (AnnSourceError kind span msg) =
         object
             [ "tag" .= "AnnSourceError"
-            , "payload" .=
+            , "contents" .=
               object ["kind" .= kind, "span" .= span, "msg" .= msg]]
 
 data MsgAnn =
     MsgAnnModule
   | MsgAnnCode CodeVariety
   | MsgAnnCodeAnn CodeAnn
-  | MsgAnnRefactor Text [(SourceSpan, Text)]
+  | MsgAnnRefactor Text [((Orphan SourceSpan), Text)]
   | MsgAnnCollapse
 
 instance ToJSON MsgAnn where
     toJSON (MsgAnnModule) = object ["tag" .= "MsgAnnModule"]
     toJSON (MsgAnnCode var) =
-        object ["tag" .= "MsgAnnCode", "payload" .= var]
+        object ["tag" .= "MsgAnnCode", "contents" .= var]
     toJSON (MsgAnnCodeAnn ann) =
-        object ["tag" .= "MsgAnnCodeAnn", "payload" .= ann]
+        object ["tag" .= "MsgAnnCodeAnn", "contents" .= ann]
     toJSON (MsgAnnRefactor t spans) =
         object
             [ "tag" .= "MsgAnnRefactor"
-            , "payload" .= object ["text" .= t, "spans" .= map to spans]]
+            , "contents" .= object ["text" .= t, "spans" .= map to spans]]
       where
         to (x,y) =
             object
                 [ "tag" .= "Refactor"
-                , "payload" .= object ["span" .= x, "text" .= y]]
+                , "contents" .= object ["span" .= x, "text" .= y]]
     toJSON MsgAnnCollapse =
         object ["tag" .= "MsgAnnCollapse"]
 
@@ -333,7 +422,7 @@ instance ToJSON CodeVariety where
           ExpCode -> object ["tag" .= "ExpCode"]
           TypeCode -> object ["tag" .= "TypeCode"]
           UnknownCode -> object ["tag" .= "UnknownCode"]
-          AmbiguousCode ann -> object ["tag" .= "AmbiguousCode","payload" .= ann]
+          AmbiguousCode ann -> object ["tag" .= "AmbiguousCode","contents" .= ann]
 
 data AutocompletionSpan = AutocompletionSpan
    { autocompletionFilePath :: FilePath
@@ -356,7 +445,7 @@ instance ToJSON AutocompletionInfo where
     toJSON (AutocompletionInfo defined name qual typ) =
         object
             [ "tag" .= "AutocompletionInfo"
-            , "payload" .=
+            , "contents" .=
               object
                   (concat
                        [ [ "definedIn" .= defined
@@ -376,7 +465,7 @@ instance ToJSON VersionInfo where
     toJSON (VersionInfo major minor patch) =
         object
             [ "tag" .= "VersionInfo"
-            , "payload" .=
+            , "contents" .=
               object ["major" .= major, "minor" .= minor, "patch" .= patch]]
 
 type Identifier = Text

@@ -121,26 +121,26 @@ mainLoop clientIO session0 = do
             mods <- getLoadedModules session
             send $ ResponseGetLoadedModules mods
             loop
-          Right (RequestGetSpanInfo span) -> do
+          Right (RequestGetSpanInfo (Orphan span)) -> do
             case fileMap (spanFilePath span) of
               Just mod -> do
-                let mkInfo (span', info) = ResponseSpanInfo info span'
+                let mkInfo (span', info) = ResponseSpanInfo (Orphan info) (Orphan span')
                 send $ ResponseGetSpanInfo
                        $ map mkInfo
                        $ spanInfo (moduleName mod) span
               Nothing ->
                 send $ ResponseGetSpanInfo []
             loop
-          Right (RequestGetExpTypes span) -> do
+          Right (RequestGetExpTypes (Orphan span)) -> do
             send $ ResponseGetExpTypes $
               case fileMap (spanFilePath span) of
                 Just mod ->
-                  map (\(span', info) -> ResponseExpType info span') $
+                  map (\(span', info) -> ResponseExpType info (Orphan span')) $
                   sortSpans $
                   expTypes (moduleName mod) span
                 Nothing -> []
             loop
-          Right (RequestGetAnnExpTypes span) -> do
+          Right (RequestGetAnnExpTypes (Orphan span)) -> do
             send $ ResponseGetAnnExpTypes $
               case fileMap (spanFilePath span) of
                 Just (moduleName -> mn) ->
@@ -196,7 +196,7 @@ mainLoop clientIO session0 = do
 
 annotateTypeInfo :: Autocomplete -> (SourceSpan, Text) -> ResponseAnnExpType
 annotateTypeInfo autocomplete (span, info) =
-  ResponseAnnExpType (CodeIdInfo <$> annotateType autocomplete info) span
+  ResponseAnnExpType (CodeIdInfo <$> annotateType autocomplete info) (Orphan span)
 
 -- | We sort the spans from thinnest to thickest. Currently
 -- ide-backend sometimes returns results unsorted, therefore for now
