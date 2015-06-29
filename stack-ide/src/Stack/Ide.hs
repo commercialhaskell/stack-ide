@@ -5,35 +5,27 @@
 module Stack.Ide
     ( ClientIO(..)
     , startEmptySession
-#ifdef USE_CABAL
-    , startCabalSession
-    , sendTargetsList
-#endif
     ) where
 
-import Control.Applicative ((<$>))
-import Control.Arrow ((***))
-import Control.Concurrent.Async (withAsync)
-import Control.Exception
-import Control.Monad (join, mfilter, void)
-import Data.Function
-import Data.IORef
-import Data.List (sortBy)
-import Data.Monoid
-import Data.Ord
-import Prelude hiding (mod, span)
-
-import Data.Text (Text)
+import           Control.Applicative ((<$>))
+import           Control.Arrow ((***))
+import           Control.Concurrent.Async (withAsync)
+import           Control.Exception
+import           Control.Monad (join, mfilter, void)
+import qualified Data.ByteString.Char8 as S8
+import           Data.Function
+import           Data.IORef
+import           Data.List (sortBy)
+import           Data.Monoid
+import           Data.Ord
+import           Data.Text (Text)
 import qualified Data.Text as Text
-
-import IdeSession
-import Stack.Ide.AnnotateHaskell (annotateType, Autocomplete)
-import Stack.Ide.AnnotateMessage (annotateMessage)
-import Stack.Ide.CmdLine
-import Stack.Ide.JsonAPI
-#ifdef USE_CABAL
-import Stack.Ide.Cabal
-#endif
+import           IdeSession
+import           Prelude hiding (mod, span)
+import           Stack.Ide.AnnotateHaskell (annotateType, Autocomplete)
+import           Stack.Ide.AnnotateMessage (annotateMessage)
+import           Stack.Ide.CmdLine
+import           Stack.Ide.JsonAPI
 
 data ClientIO = ClientIO
     { sendResponse :: Response -> IO ()
@@ -102,7 +94,7 @@ mainLoop clientIO session0 = do
             loop
           Right (RequestUpdateSession upd) -> do
             updateSession session (mconcat (map makeSessionUpdate upd)) $ \progress ->
-              send $ ResponseUpdateSession (Just (Orphan progress))
+              send $ ResponseUpdateSession (Just progress)
             send $ ResponseUpdateSession Nothing
             errors <- getSourceErrors session
             if all ((== KindWarning) . errorKind) errors
@@ -121,26 +113,26 @@ mainLoop clientIO session0 = do
             mods <- getLoadedModules session
             send $ ResponseGetLoadedModules mods
             loop
-          Right (RequestGetSpanInfo (Orphan span)) -> do
+          Right (RequestGetSpanInfo span) -> do
             case fileMap (spanFilePath span) of
               Just mod -> do
-                let mkInfo (span', info) = ResponseSpanInfo (Orphan info) (Orphan span')
+                let mkInfo (span', info) = ResponseSpanInfo info span'
                 send $ ResponseGetSpanInfo
                        $ map mkInfo
                        $ spanInfo (moduleName mod) span
               Nothing ->
                 send $ ResponseGetSpanInfo []
             loop
-          Right (RequestGetExpTypes (Orphan span)) -> do
+          Right (RequestGetExpTypes span) -> do
             send $ ResponseGetExpTypes $
               case fileMap (spanFilePath span) of
                 Just mod ->
-                  map (\(span', info) -> ResponseExpType info (Orphan span')) $
+                  map (\(span', info) -> ResponseExpType info span') $
                   sortSpans $
                   expTypes (moduleName mod) span
                 Nothing -> []
             loop
-          Right (RequestGetAnnExpTypes (Orphan span)) -> do
+          Right (RequestGetAnnExpTypes span) -> do
             send $ ResponseGetAnnExpTypes $
               case fileMap (spanFilePath span) of
                 Just (moduleName -> mn) ->
@@ -171,7 +163,7 @@ mainLoop clientIO session0 = do
                   result <- runWait actions
                   case result of
                     Left output -> do
-                      send $ ResponseProcessOutput output
+                      send $ ResponseProcessOutput (S8.unpack output)
                       outputLoop
                     Right done -> do
                       send $ ResponseProcessDone done
@@ -180,7 +172,7 @@ mainLoop clientIO session0 = do
           Right (RequestProcessInput input) -> do
             mprocess <- readIORef mprocessRef
             case mprocess of
-              Just actions -> supplyStdin actions input
+              Just actions -> supplyStdin actions (S8.pack input)
               Nothing -> send ResponseNoProcessError
             loop
           Right RequestProcessKill -> do
@@ -196,7 +188,7 @@ mainLoop clientIO session0 = do
 
 annotateTypeInfo :: Autocomplete -> (SourceSpan, Text) -> ResponseAnnExpType
 annotateTypeInfo autocomplete (span, info) =
-  ResponseAnnExpType (CodeIdInfo <$> annotateType autocomplete info) (Orphan span)
+  ResponseAnnExpType (CodeIdInfo <$> annotateType autocomplete info) span
 
 -- | We sort the spans from thinnest to thickest. Currently
 -- ide-backend sometimes returns results unsorted, therefore for now
@@ -224,7 +216,7 @@ idInfoToAutocompletion IdInfo{idProp = IdProp{idName, idDefinedIn, idType}, idSc
                      WiredIn                -> Nothing
 
 makeSessionUpdate :: RequestSessionUpdate -> IdeSessionUpdate
-makeSessionUpdate (RequestUpdateTargets (RequestTargets targets)) =
+makeSessionUpdate (RequestUpdateTargets targets) =
   updateTargets targets
 
 -- TODO:

@@ -18,7 +18,7 @@ import qualified Data.Text.ICU as ICU
 import qualified Data.Text.ICU.Error as ICU
 import           Debug.Trace (trace)
 import           Stack.Ide.AnnotateHaskell
-import           Stack.Ide.JsonAPI (AnnSourceError(..), Ann(..), MsgAnn(..), CodeAnn(..), CodeVariety(..), Orphan(..))
+import           Stack.Ide.JsonAPI (AnnSourceError(..), Ann(..), MsgAnn(..), CodeAnn(..), CodeVariety(..))
 import           IdeSession.Types.Public (SourceError(..), SourceErrorKind(..), SourceSpan(..), EitherSpan(..), ModuleId(..), ModuleName)
 import           Prelude
 import           Safe (headMay, lastMay)
@@ -51,7 +51,7 @@ annotateMessage' auto err = case (errorSpan err, errorMsg err) of
       | fromGhc -> AnnGroup
         [ AnnLeaf "Redundant import: "
         , Ann MsgAnnModule (AnnLeaf (stripCodeTicks x))
-        , Ann (MsgAnnRefactor "remove the import statement" [(Orphan sp, "")])
+        , Ann (MsgAnnRefactor "remove the import statement" [(sp, "")])
               (AnnLeaf "Remove import")
         ]
     --TODO: remove the top-level forall from the type.
@@ -62,7 +62,7 @@ annotateMessage' auto err = case (errorSpan err, errorMsg err) of
         , codeBox auto x
         , Ann (MsgAnnRefactor
                 "insert the type signature above the function declaration"
-                [(Orphan (SourceSpan fp fl 1 fl 1), T.strip x <> "\n")])
+                [((SourceSpan fp fl 1 fl 1), T.strip x <> "\n")])
               (AnnLeaf "Insert")
         ]
     ( ProperSpan sp,
@@ -85,7 +85,7 @@ annotateMessage' auto err = case (errorSpan err, errorMsg err) of
         process :: Text -> [Ann MsgAnn]
         process (match "(\\s*)([^\\s]+)(.*)" -> Just [_, prefix', var', rest']) =
             [ AnnLeaf prefix'
-            , Ann (MsgAnnRefactor "replace the identifier with this option" [(Orphan sp, stripCodeTicks var')])
+            , Ann (MsgAnnRefactor "replace the identifier with this option" [(sp, stripCodeTicks var')])
                   (AnnLeaf (stripCodeTicks var'))
             , AnnLeaf rest'
             ]
