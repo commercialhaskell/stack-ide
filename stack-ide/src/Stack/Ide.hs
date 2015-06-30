@@ -32,26 +32,12 @@ data ClientIO = ClientIO
     , receiveRequest :: IO (Either String Request)
     }
 
-startEmptySession :: ClientIO -> Options -> EmptyOptions -> IO ()
-startEmptySession clientIO Options{..} EmptyOptions = do
+startEmptySession :: ClientIO -> Options -> IO ()
+startEmptySession clientIO Options{..} = do
     sendWelcome clientIO
     bracket (initSession optInitParams optConfig)
             shutdownSession
             (mainLoop clientIO)
-
-#ifdef USE_CABAL
-startCabalSession :: ClientIO -> Options -> CabalOptions -> IO ()
-startCabalSession clientIO options cabalOptions = do
-    sendWelcome clientIO
-    bracket (initCabalSession options cabalOptions)
-            shutdownSession
-            (mainLoop clientIO)
-
-sendTargetsList :: ClientIO -> FilePath -> IO ()
-sendTargetsList clientIO fp = do
-    sendWelcome clientIO
-    sendResponse clientIO =<< listTargets fp
-#endif
 
 sendWelcome :: ClientIO -> IO ()
 sendWelcome clientIO =

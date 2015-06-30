@@ -85,11 +85,13 @@
         (stack-mode-log "Starting: stack ide")
         (let* ((name (stack-mode-process-name (stack-mode-name)))
                (process (or (get-process name)
-                            (start-process
-                             name
-                             nil
-                             stack-mode-proc-path
-                             "ide"))))
+                            (apply #'start-process
+                                   (append (list name
+                                                 nil
+                                                 stack-mode-proc-path
+                                                 "ide")
+                                           (split-string (read-from-minibuffer "Targets: ")
+                                                         " "))))))
           (set-process-sentinel process 'stack-mode-sentinel)
           (set-process-filter process 'stack-mode-filter))
         (inferior-stack-mode)))))
@@ -139,24 +141,34 @@
               (with-current-buffer (stack-mode-buffer)
                 (file-relative-name filename default-directory))
               span)))
-           (blob (stack-contents (car (mapcar #'identity infos))))
-           (info (stack-lookup-contents 'info blob))
-           (id-info (stack-contents info))
-           (scope (stack-lookup 'tag (stack-lookup 'scope id-info)))
-           (prop (stack-lookup-contents 'prop id-info)))
+           (parts (mapcar #'identity (elt infos 0)))
+           (info (stack-contents (elt parts 0)))
+           (span (elt parts 1))
+           (scope (stack-lookup 'tag (stack-lookup 'idScope info)))
+           (def-span (stack-lookup-contents
+                      'idDefSpan
+                      (stack-lookup 'idProp info))))
       (cond
-       ((string= scope "Local")
-        (let* ((def-span (stack-lookup-contents 'defSpan prop))
-               (points (stack-mode-points-from-span def-span)))
-          (goto-char (car points))))
+       ((listp def-span)
+        (stack-mode-goto-span def-span))
        (t
-        (let* ((defined-in (stack-lookup-contents 'definedIn prop))
-               (package (stack-lookup-contents 'package defined-in))
-               (module (stack-lookup 'name defined-in))
-               (name-ver (stack-lookup 'key package)))
-          (message "Imported from %s (%s)"
-                   module
-                   name-ver)))))))
+        (let* ((imported-from
+                (stack-lookup
+                 'idImportedFrom
+                 (stack-lookup 'idScope info)))
+               (imported-module (stack-lookup 'moduleName imported-from))
+               (defined-in (stack-lookup
+                            'idDefinedIn
+                            (stack-lookup 'idProp info)))
+               (package (stack-lookup 'modulePackage defined-in))
+               (package-name (stack-lookup 'packageName package))
+               (package-ver (stack-lookup 'packageVersion package))
+               (module (stack-lookup 'moduleName defined-in)))
+          (message "Imported via %s, defined in %s (%s-%s)"
+                   (haskell-fontify-as-mode imported-module 'haskell-mode)
+                   (haskell-fontify-as-mode module 'haskell-mode)
+                   package-name
+                   package-ver)))))))
 
 (defun haskell-mode-show-type-at (&optional insert-value)
   "Show the type of the thing at point."
@@ -213,9 +225,9 @@
                          (concat
                           code
                           " :: "
-                          (stack-lookup 'text (stack-contents type)))
+                          (elt type 0))
                          'haskell-mode))
-                      types
+                      (subseq types 0 1)
                       "\n")))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -405,25 +417,25 @@ directory."
   "Get the span info of the given location."
   (with-current-buffer (stack-mode-buffer)
     (stack-mode-call
-     `((tag . "GetSpanInfo")
+     `((tag . "RequestGetSpanInfo")
        (contents
-        . ((filePath   . ,file)
-           (fromLine   . ,(plist-get span :sl))
-           (fromColumn . ,(plist-get span :sc))
-           (toLine     . ,(plist-get span :el))
-           (toColumn   . ,(plist-get span :ec))))))))
+        . ((spanFilePath   . ,file)
+           (spanFromLine   . ,(plist-get span :sl))
+           (spanFromColumn . ,(plist-get span :sc))
+           (spanToLine     . ,(plist-get span :el))
+           (spanToColumn   . ,(plist-get span :ec))))))))
 
 (defun stack-mode-get-exp-types (module file span)
   "Get the type info of the given location."
   (with-current-buffer (stack-mode-buffer)
     (stack-mode-call
-     `((tag . "GetExpTypes")
+     `((tag . "RequestGetExpTypes")
        (contents
-        . ((filePath   . ,file)
-           (fromLine   . ,(plist-get span :sl))
-           (fromColumn . ,(plist-get span :sc))
-           (toLine     . ,(plist-get span :el))
-           (toColumn   . ,(plist-get span :ec))))))))
+        . ((spanFilePath   . ,file)
+           (spanFromLine   . ,(plist-get span :sl))
+           (spanFromColumn . ,(plist-get span :sc))
+           (spanToLine     . ,(plist-get span :el))
+           (spanToColumn   . ,(plist-get span :ec))))))))
 
 (defun stack-mode-get-use-sites (module file span)
   "Get all uses of an identifier."
@@ -520,17 +532,16 @@ identifier's points."
         (stack-mode-span-from-points (car points) (cdr points))
       (error "No identifier at point."))))
 
-(defun stack-mode-points-from-span (span)
+(defun stack-mode-goto-span (span)
   "Get buffer points from a span."
-  (save-excursion
+  (with-current-buffer (stack-mode-buffer)
+    (find-file (stack-lookup 'spanFilePath span))
     (goto-char (point-min))
-    (forward-line (1- (stack-lookup 'fromLine span)))
-    (forward-char (1- (stack-lookup 'fromColumn span)))
     (let ((beg (point)))
       (goto-char (point-min))
-      (forward-line (1- (stack-lookup 'toLine span)))
-      (forward-char (1- (stack-lookup 'toColumn span)))
-      (cons beg (point)))))
+      (forward-line (1- (stack-lookup 'spanFromLine span)))
+      (goto-char (line-beginning-position))
+      (forward-char (1- (stack-lookup 'spanFromColumn span))))))
 
 (defun stack-mode-loose-ident-at-point ()
   "Get the loose ident at point."
@@ -549,7 +560,7 @@ identifier's points."
 
 (defun stack-lookup (key object)
   "Get from a JSON object."
-  (cdr (assoc key object)))
+  (cdr (assoc key (mapcar #'identity object))))
 
 (defun stack-contents (object)
   "Get from a JSON object."

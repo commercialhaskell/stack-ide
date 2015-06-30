@@ -1,7 +1,9 @@
+{-# LANGUAGE Haskell2010 #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 
 module Stack.Ide.AnnotateHaskell
   ( Autocomplete
@@ -74,6 +76,7 @@ getQNames vot =
     -- Yield all encountered QNames.
     (\qn -> [(qn, vot)])
   where
+    -- recurseWith:: Data a => ValueOrType -> a -> [(QName SrcSpanInfo, ValueOrType)]
     recurseWith vot' = concat . gmapQ (getQNames vot')
 
 exactLookup :: ValueOrType -> Autocomplete -> String -> Maybe IdInfo
@@ -140,8 +143,7 @@ parseMode =
 -- | Default extensions.
 defaultExtensions :: [Extension]
 defaultExtensions =
-  [e | e@EnableExtension{} <- knownExtensions] \\
-  map EnableExtension badExtensions
+  [e | e@EnableExtension{} <- knownExtensions] \\ map EnableExtension badExtensions
 
 -- | Extensions which steal too much syntax.
 badExtensions :: [KnownExtension]

@@ -3,7 +3,6 @@
 module Stack.Ide.CmdLine (
     -- * Types
     Options(..)
-  , Command(..)
   , EmptyOptions(..)
   , CabalOptions(..)
     -- * Parsing
@@ -27,16 +26,9 @@ import IdeSession
 data Options = Options {
     optInitParams :: SessionInitParams
   , optConfig     :: SessionConfig
-  , optCommand    :: Command
   }
   deriving Show
 
-data Command =
-    StartEmptySession EmptyOptions
-  | StartCabalSession CabalOptions
-  | ListTargets FilePath
-  | ShowAPI
-  deriving Show
 
 data EmptyOptions = EmptyOptions
   deriving Show
@@ -55,37 +47,7 @@ parseOptions :: Parser Options
 parseOptions = Options
   <$> parseInitParams
   <*> parseConfig
-  <*> parseCommand
 
-parseCommand :: Parser Command
-parseCommand = subparser $ mconcat [
-      command "empty" $ info
-        (helper <*> (StartEmptySession <$> parseEmptyOptions))
-        (progDesc "Start an empty session")
-    , command "cabal" $ info
-        (helper <*> (StartCabalSession <$> parseCabalOptions))
-        (progDesc "Start a Cabal session in directory DIR")
-    , command "targets" $ info
-        (helper <*> (ListTargets <$> argument str (metavar "DIR")))
-        (progDesc "List the available build targets in directory DIR")
-    , command "show-api" $ info
-        (helper <*> pure ShowAPI)
-        (progDesc "Show the JSON API documentation")
-    ]
-
-parseEmptyOptions :: Parser EmptyOptions
-parseEmptyOptions = pure EmptyOptions
-
-parseCabalOptions :: Parser CabalOptions
-parseCabalOptions = CabalOptions
-    <$> (strOption $ mconcat [
-            long "target"
-          , metavar "NAME"
-          , value "library"
-          , showDefault
-          , help "Target in the Cabal file"
-          ])
-    <*> argument str (metavar "DIR")
 
 {-------------------------------------------------------------------------------
   Parsers for ide-backend types

@@ -25,6 +25,4 @@ main = do
         }
         where fromJSON = parseEither parseJSON
   opts <- getCommandLineOptions
-  case optCommand opts of
-    ShowAPI -> putStrLn "TODO: API"
-    StartEmptySession opts' -> startEmptySession clientIO opts opts'
+  startEmptySession clientIO opts
