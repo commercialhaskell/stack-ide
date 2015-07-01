@@ -10,7 +10,7 @@ import Stack.Ide
 import Stack.Ide.CmdLine
 import Stack.Ide.JsonAPI ()
 import Stack.Ide.Util.ValueStream (newStream, nextInStream)
-import System.IO (stdin, stdout)
+import System.IO (stdin, stdout, stderr, hSetBuffering, BufferMode(..))
 
 main :: IO ()
 main = do
@@ -25,4 +25,8 @@ main = do
         }
         where fromJSON = parseEither parseJSON
   opts <- getCommandLineOptions
+  
+  -- Disable buffering for interactive piping
+  mapM_ (flip hSetBuffering NoBuffering) [stdout, stderr]
+  
   startEmptySession clientIO opts
