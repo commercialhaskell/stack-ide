@@ -204,6 +204,8 @@ idInfoToAutocompletion IdInfo{idProp = IdProp{idName, idDefinedIn, idType}, idSc
 makeSessionUpdate :: RequestSessionUpdate -> IdeSessionUpdate
 makeSessionUpdate (RequestUpdateTargets targets) =
   updateTargets targets
+makeSessionUpdate (RequestSessionUpdate) =
+  mempty
 
 -- TODO:
 {-makeSessionUpdate (RequestUpdateSourceFile filePath contents) =

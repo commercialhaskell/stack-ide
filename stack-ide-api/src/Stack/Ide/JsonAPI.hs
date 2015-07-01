@@ -85,6 +85,7 @@ data Request =
 -- | Session updates
 data RequestSessionUpdate
   = RequestUpdateTargets Targets
+  | RequestSessionUpdate -- Simply calls updateSession with no changes to trigger a recompile.
 
 -- TODO:
 -- RequestUpdateGhcOpts [String]
