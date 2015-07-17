@@ -27,7 +27,6 @@ data Options = Options {
     optInitParams :: SessionInitParams
   , optConfig     :: SessionConfig
   }
-  deriving Show
 
 
 data EmptyOptions = EmptyOptions
@@ -135,6 +134,8 @@ parseConfig = SessionConfig
             long "keep-tmp-files"
           , help "Do not delete the session directory on termination"
           ])
+    <*> useDefault configIdeBackendServer
+    <*> useDefault configIdeBackendExeCabal
   where
     useDefault :: (SessionConfig -> a) -> Parser a
     useDefault fld = pure (fld defaultSessionConfig)
@@ -168,8 +169,6 @@ getCommandLineOptions = execParser opts
 {-------------------------------------------------------------------------------
   Auxiliary
 -------------------------------------------------------------------------------}
-
-deriving instance Show SessionConfig
 
 instance Show (a -> b) where
   show _ = "<<function>>"
