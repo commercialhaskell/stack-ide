@@ -15,7 +15,6 @@ Install with:
         stack-ide \
         stack-ide-api \ 
         ../ide-backend/ide-backend \
-        ../ide-backend/ide-backend-rts \
         ../ide-backend/ide-backend-server \
         ../ide-backend/ide-backend-common
 
