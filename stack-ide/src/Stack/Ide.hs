@@ -136,19 +136,11 @@ mainLoop clientIO session0 = do
                   expTypes mn span
                 Nothing -> []
             loop
-          Right (RequestGetAutocompletion autocmpletionSpan) -> do
-            case fileMap (autocompletionFilePath autocmpletionSpan) of
-              Just mod -> do
-                let query = (autocompletionPrefix autocmpletionSpan)
-                    splitQualifier = join (***) reverse . break (== '.') . reverse
-                    (prefix, qualifierStr) = splitQualifier query
-                    qualifier = mfilter (not . Text.null) (Just (Text.pack qualifierStr))
-                send $ ResponseGetAutocompletion
-                       $ filter ((== qualifier) . autocompletionQualifier)
-                       $ map idInfoToAutocompletion
-                       $ autoComplete (moduleName mod) prefix
-              Nothing ->
-                send $ ResponseGetAutocompletion []
+          Right (RequestGetAutocompletion filePath prefix) -> do
+            send $ ResponseGetAutocompletion $
+              case fileMap filePath of
+                Just mod -> autoComplete (moduleName mod) prefix
+                Nothing -> []
             loop
           Right (RequestRun usePty mn identifier) -> do
             actions <- (if usePty then runStmtPty else runStmt)
@@ -201,17 +193,6 @@ sortSpans = sortBy (on thinner fst)
                         else \(SourceSpan _ s _ e _) -> e - s)
                     x
                     y
-
--- | Construct autocomplete information
-idInfoToAutocompletion :: IdInfo -> AutocompletionInfo
-idInfoToAutocompletion IdInfo{idProp = IdProp{idName, idDefinedIn, idType}, idScope} =
-  AutocompletionInfo definedIn idName qualifier idType
-  where definedIn = moduleName idDefinedIn
-        qualifier = case idScope of
-                     Binder                 -> Nothing
-                     Local{}                -> Nothing
-                     Imported{idImportQual} -> mfilter (not . Text.null) (Just idImportQual)
-                     WiredIn                -> Nothing
 
 makeSessionUpdate :: RequestSessionUpdate -> IdeSessionUpdate
 makeSessionUpdate (RequestUpdateTargets targets) =

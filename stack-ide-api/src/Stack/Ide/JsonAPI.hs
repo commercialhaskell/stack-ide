@@ -32,8 +32,6 @@ module Stack.Ide.JsonAPI (
   , CodeAnn(..)
   , MsgAnn(..)
   , CodeVariety(..)
-  , AutocompletionSpan(..)
-  , AutocompletionInfo(..)
   , VersionInfo(..)
   , Identifier
   , Targets(..)
@@ -73,7 +71,7 @@ data Request =
   | RequestGetSpanInfo SourceSpan
   | RequestGetExpTypes SourceSpan
   | RequestGetAnnExpTypes SourceSpan
-  | RequestGetAutocompletion AutocompletionSpan
+  | RequestGetAutocompletion FilePath String
   -- Run
   | RequestRun Bool ModuleName Identifier
   | RequestProcessInput String
@@ -107,7 +105,7 @@ data Response =
   | ResponseGetSpanInfo [ResponseSpanInfo]
   | ResponseGetExpTypes [ResponseExpType]
   | ResponseGetAnnExpTypes [ResponseAnnExpType]
-  | ResponseGetAutocompletion [AutocompletionInfo]
+  | ResponseGetAutocompletion [IdInfo]
   -- Run
   | ResponseProcessOutput String
   | ResponseProcessDone RunResult
@@ -154,20 +152,6 @@ data AnnSourceError = AnnSourceError
   , annErrorSpan :: !EitherSpan
   , annErrorMsg :: !(Ann MsgAnn)
   }
-  deriving (Show, Eq)
-
-data AutocompletionSpan = AutocompletionSpan
-   { autocompletionFilePath :: FilePath
-   , autocompletionPrefix :: String
-   }
-  deriving (Show, Eq)
-
-data AutocompletionInfo = AutocompletionInfo
-   { autocompletionInfoDefinedIn :: Text
-   , autocompletionInfoName :: Text
-   , autocompletionQualifier :: Maybe Text
-   , autocompletionType :: Maybe Text
-   }
   deriving (Show, Eq)
 
 data CodeVariety =
@@ -241,8 +225,6 @@ instance FromJSON a => FromJSON (Sequenced a) where
 $(concat <$> mapM (deriveJSON defaultOptions)
   [ ''Ann
   , ''AnnSourceError
-  , ''AutocompletionInfo
-  , ''AutocompletionSpan
   , ''CodeAnn
   , ''CodeVariety
   , ''MsgAnn
