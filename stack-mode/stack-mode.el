@@ -123,10 +123,11 @@
   "Load the current buffer's file."
   (interactive)
   (save-buffer)
-  (let ((filename (buffer-file-name)))
-    (with-current-buffer (stack-mode-buffer)
-      (stack-mode-update-file
-       (file-relative-name filename default-directory)))))
+  ;; FIXME: probably should check if the buffer is part of the
+  ;; project, or someting along those lines>
+  (with-current-buffer
+      (stack-mode-buffer)
+      (stack-mode-reload)))
 
 (defun stack-mode-goto ()
   "Go to definition of thing at point."
@@ -402,14 +403,12 @@ directory."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Commands
 
-(defun stack-mode-update-file (filepath)
-  "Load the given filepath."
+(defun stack-mode-reload ()
+  "Compile the code and fetch compile errors."
   (with-current-buffer (stack-mode-buffer)
     (stack-mode-enqueue
-     `((request . "UpdateSession")
-       (update . (,(stack-mode-list->hashtable
-                    `((update . "updateSourceFileFromFile")
-                      (filePath . ,filepath))))))
+     `((tag . "RequestUpdateSession")
+       (contents . []))
      nil
      'stack-mode-loading-callback)))
 
@@ -459,7 +458,8 @@ directory."
     :continue)
    (t
     (stack-mode-enqueue
-     `((request . "GetSourceErrors"))
+     `((tag . "RequestGetSourceErrors")
+       (contents . []))
      nil
      'stack-mode-get-source-errors-callback)
     :done)))
