@@ -1,5 +1,6 @@
 name:                stack-ide
 version:             0.1.0.0
+license:             MIT
 license-file:        LICENSE
 author:              Edsko de Vries
 maintainer:          chrisdone@fpcomplete.com

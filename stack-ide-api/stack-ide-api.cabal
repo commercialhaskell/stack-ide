@@ -2,10 +2,10 @@ name:                stack-ide-api
 version:             0.1.0.0
 -- synopsis:
 -- description:
--- license:
+license:             MIT
 license-file:        LICENSE
 author:              Edsko de Vries
-maintainer:          edsko@well-typed.com
+maintainer:          chrisdone@fpcomplete.com
 -- copyright:
 category:            Development
 build-type:          Simple
