@@ -80,12 +80,13 @@ data Request =
   | RequestProcessKill
   -- Misc
   | RequestShutdownSession
-
+  deriving (Show, Eq)
 
 -- | Session updates
 data RequestSessionUpdate
   = RequestUpdateTargets Targets
   | RequestSessionUpdate -- Simply calls updateSession with no changes to trigger a recompile.
+  deriving (Show, Eq)
 
 -- TODO:
 -- RequestUpdateGhcOpts [String]
@@ -114,15 +115,19 @@ data Response =
   -- Misc
   | ResponseInvalidRequest String
   | ResponseShutdownSession
+  deriving (Show, Eq)
 
 data ResponseSpanInfo =
     ResponseSpanInfo SpanInfo SourceSpan
+  deriving (Show, Eq)
 
 data ResponseExpType =
     ResponseExpType Text SourceSpan
+  deriving (Show, Eq)
 
 data ResponseAnnExpType =
     ResponseAnnExpType (Ann CodeAnn) SourceSpan
+  deriving (Show, Eq)
 
 data MsgAnn =
     MsgAnnModule
@@ -130,26 +135,30 @@ data MsgAnn =
   | MsgAnnCodeAnn CodeAnn
   | MsgAnnRefactor Text [(SourceSpan, Text)]
   | MsgAnnCollapse
+  deriving (Show, Eq)
 
 data Ann a =
     Ann a (Ann a)
   | AnnGroup [Ann a]
   | AnnLeaf Text
-  deriving (Functor)
+  deriving (Show, Eq, Functor)
 
 data CodeAnn =
     CodeIdInfo IdInfo
+  deriving (Show, Eq)
 
 data AnnSourceError = AnnSourceError
   { annErrorKind :: !SourceErrorKind
   , annErrorSpan :: !EitherSpan
   , annErrorMsg :: !(Ann MsgAnn)
   }
+  deriving (Show, Eq)
 
 data AutocompletionSpan = AutocompletionSpan
    { autocompletionFilePath :: FilePath
    , autocompletionPrefix :: String
    }
+  deriving (Show, Eq)
 
 data AutocompletionInfo = AutocompletionInfo
    { autocompletionInfoDefinedIn :: Text
@@ -157,6 +166,7 @@ data AutocompletionInfo = AutocompletionInfo
    , autocompletionQualifier :: Maybe Text
    , autocompletionType :: Maybe Text
    }
+  deriving (Show, Eq)
 
 data CodeVariety =
     ExpCode
@@ -168,12 +178,14 @@ data CodeVariety =
   -- ^ When we can't tell whether the code is an expression or type,
   -- default to yielding type id info.  The expression annotated code
   -- is yielded in this annotation.
+  deriving (Show, Eq)
 
 -- | Client version
 --
 -- Standard versioning applies (major, minor, patch)
 data VersionInfo =
     VersionInfo Int Int Int
+  deriving (Show, Eq)
 
 type Identifier = Text
 
