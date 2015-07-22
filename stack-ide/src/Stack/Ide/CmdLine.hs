@@ -1,3 +1,5 @@
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Stack.Ide.CmdLine (
@@ -94,7 +96,7 @@ parseInitParams = SessionInitParams
       xs <|> fld defaultSessionInitParams
 
 parseConfig :: Parser SessionConfig
-parseConfig = SessionConfig
+parseConfig = mkSessionConfig
     <$> (strOption $ mconcat [
             long "dir"
           , metavar "DIR"
@@ -110,14 +112,21 @@ parseConfig = SessionConfig
               , "If this is passed, then there's no need for the editor to send the source / data files to the backend.  Instead, it just directly uses the files."
               ]
           ])
-    <*> (defaultTo configExtraPathDirs . fmap splitSearchPath' . strOption $ mconcat [
-            long "path"
+    <*> (fmap splitSearchPath' . strOption $ mconcat [
+            long "ide-backend-tools-path"
           , metavar "PATH"
           , value ""
-          , help "Additional search path to add to search for tools (ghc, ide-backend-server, etc.)."
+          , help "Path to search for suitable binaries of ide-backend-server and ide-backend-exe-cabal. Defaults to system path."
           ])
-    <*> useDefault configInProcess
-    <*> useDefault configGenerateModInfo
+    <*> (defaultTo configExtraPathDirs . fmap splitSearchPath' . strOption $ mconcat [
+            long "extra-path"
+          , metavar "PATH"
+          , value ""
+          , helpDoc . Just $ Doc.vcat [
+                "Additional search path to add to search for every tools (ghc, ide-backend-server, etc.)."
+              , "Useful for overriding default locations."
+              ]
+          ])
     <*> (fmap mkPackageDBStack . strOption $ mconcat [
             long "package-db"
           , metavar "DIR"
@@ -127,19 +136,11 @@ parseConfig = SessionConfig
               , autoWrap "This takes the form of a search path; the resulting DB stack will consist of the global DB and the specified specific DBs."
               ]
           ])
-    <*> useDefault configLicenseExc
-    <*> useDefault configLicenseFixed
-    <*> useDefault configLog
     <*> (fmap not . switch $ mconcat [
             long "keep-tmp-files"
           , help "Do not delete the session directory on termination"
           ])
-    <*> useDefault configIdeBackendServer
-    <*> useDefault configIdeBackendExeCabal
   where
-    useDefault :: (SessionConfig -> a) -> Parser a
-    useDefault fld = pure (fld defaultSessionConfig)
-
     defaultTo :: (SessionConfig -> [a]) -> Parser [a] -> Parser [a]
     defaultTo fld = fmap $ \xs ->
       case xs of
@@ -150,6 +151,32 @@ parseConfig = SessionConfig
     mkPackageDBStack ""   = configPackageDBStack defaultSessionConfig
     mkPackageDBStack path = GlobalPackageDB
                           : map SpecificPackageDB (splitSearchPath' path)
+
+    ide_backend_server    = snd $ configIdeBackendServer   defaultSessionConfig
+    ide_backend_exe_cabal = snd $ configIdeBackendExeCabal defaultSessionConfig
+
+    mkSessionConfig configDir configLocalWorkingDir toolsPath configExtraPathDirs
+                    configPackageDBStack configDeleteTempFiles
+      = let
+          SessionConfig{configInProcess,configGenerateModInfo,configLog,
+                        configLicenseExc,configLicenseFixed}
+            = defaultSessionConfig
+
+          toolsPath' = (map ProgramSearchPathDir configExtraPathDirs) ++ case toolsPath of
+            [] -> [ProgramSearchPathDefault]
+            _  -> map ProgramSearchPathDir toolsPath
+              -- NB. These binaries are tied to the version of ghc being used for the project;
+              -- so if we are given a specific toolsPath but ide-backend-server is not found there,
+              -- it is arguably better to just fail, and not use a potentially incorrect version of
+              -- the binary that could be accidentally installed somewhere on the system path...
+              -- (e.g. a 'file not found' error is simpler to diagnose for a user than an obscure
+              -- 'invalid package db format' error)
+
+          configIdeBackendServer   = (toolsPath', ide_backend_server)
+          configIdeBackendExeCabal = (toolsPath', ide_backend_exe_cabal)
+
+        in SessionConfig{..}
+
 
 {-------------------------------------------------------------------------------
   Top-level API
