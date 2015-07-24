@@ -5,6 +5,7 @@
 module Stack.Ide
     ( ClientIO(..)
     , startEmptySession
+    , sendExceptions
     ) where
 
 import           Control.Applicative ((<$>))
@@ -26,6 +27,8 @@ import           Stack.Ide.AnnotateHaskell (annotateType, Autocomplete)
 import           Stack.Ide.AnnotateMessage (annotateMessage)
 import           Stack.Ide.CmdLine
 import           Stack.Ide.JsonAPI
+import           System.Environment (getEnvironment)
+import           System.Exit (exitWith, exitFailure)
 
 data ClientIO = ClientIO
     { sendResponse :: Response -> IO ()
@@ -41,7 +44,16 @@ startEmptySession clientIO Options{..} = do
 
 sendWelcome :: ClientIO -> IO ()
 sendWelcome clientIO =
-     sendResponse clientIO $ ResponseWelcome ideBackendClientVersion
+    sendResponse clientIO $ ResponseWelcome ideBackendClientVersion
+
+sendExceptions :: ClientIO -> IO () -> IO ()
+sendExceptions clientIO inner =
+  inner `catch` \ex ->
+    case fromException ex of
+      Just ec -> exitWith ec
+      Nothing -> do
+        sendResponse clientIO $ ResponseFatalError (show ex)
+        exitFailure
 
 -- | Version of the client API
 --

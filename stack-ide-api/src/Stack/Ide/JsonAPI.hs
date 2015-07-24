@@ -114,6 +114,7 @@ data Response =
   | ResponseNoProcessError
   -- Misc
   | ResponseInvalidRequest String
+  | ResponseFatalError String
   | ResponseShutdownSession
   deriving (Show, Eq)
 
