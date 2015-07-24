@@ -236,44 +236,58 @@
 
 (defun stack-mode-filter (process response)
   (with-current-buffer (stack-mode-buffer (stack-mode-name-from-process process))
-    (if stack-mode-current-command
-        (let* ((lines (split-string (concat stack-mode-buffer response) "\n")))
-          (setq stack-mode-buffer (car (last lines)))
-          (setq lines (butlast lines))
-          (let ((data (plist-get stack-mode-current-command :data))
-                (cont (plist-get stack-mode-current-command :cont)))
-            (while lines
-              (let ((line (pop lines)))
-                (stack-mode-log
-                 "<- %s"
-                 (haskell-fontify-as-mode line 'javascript-mode))
-                (when (let* ((error-msg nil)
-                             (ret (condition-case e
-                                      (funcall cont data (json-read-from-string line))
-                                    (error (setq error-msg e)
-                                           :error))))
-                        (ecase ret
-                          (:done t)
-                          (:continue nil)
-                          (:error
-                           (setq stack-mode-buffer "")
-                           (setq stack-mode-current-command nil)
-                           (setq stack-mode-queue nil)
-                           (error "Command handler error: %S\n\nThe command queue has been cleared."
-                                  error-msg))
-                          (t
-                           (error "A command handler must return either :done or :continue,
-but it returned: %S
-command was: %S" ret stack-mode-current-command))))
-                  (cl-loop for line in lines
-                           do (stack-mode-log
-                               "Extraneous lines after command completed: %s"
-                               (haskell-fontify-as-mode line 'javascript-mode)))
-                  (setq stack-mode-current-command nil)
-                  (setq lines nil)
-                  (stack-mode-queue-trigger))))))
-      (stack-mode-log "Ignoring: %s"
-                      (haskell-fontify-as-mode response 'javascript-mode)))))
+    (let* ((lines (split-string (concat stack-mode-buffer response) "\n"))
+           )
+      (setq stack-mode-buffer (car (last lines)))
+      (setq lines (butlast lines))
+      (while lines
+        (let ((line (pop lines)))
+          (stack-mode-log
+           "<- %s"
+           (haskell-fontify-as-mode line 'javascript-mode))
+          (when (let* ((error-msg nil)
+                       (ret (condition-case e
+                                (stack-mode-handle-response (json-read-from-string line))
+                              (error (setq error-msg e)
+                                     :error))))
+                  (ecase ret
+                    (:done t)
+                    (:continue nil)
+                    (:error
+                     (setq stack-mode-buffer "")
+                     (setq stack-mode-current-command nil)
+                     (setq stack-mode-queue nil)
+                     (error "Command handler error: %S\n\nThe command queue has been cleared."
+                            error-msg))
+                    (t
+                     (error "A command handler must return either :done or :continue,
+but it rd: %S
+command S" ret stack-mode-current-command))))
+            (cl-loop for line in lines
+                     do (stack-mode-log
+                         "Extraneous lines after command completed: %s"
+                         (haskell-fontify-as-mode line 'javascript-mode)))
+            (setq stack-mode-current-command nil)
+            (setq lines nil)
+            (stack-mode-queue-trigger))))
+      )))
+
+(defun stack-mode-handle-response (value)
+
+    (ecase (assoc 'tag value)
+      ;; TODO: handle these responses
+      ("ResponseWelcome" ())
+      ("ResponseUpdateSession" ())
+      ("ResponseProcessOutput" ())
+      ("ResponseProcessDone" ())
+      ("ReseponseLog" ())
+      ("ResponseFatalError" ())
+      (t (if stack-mode-current-command
+             (let* ((data (plist-get stack-mode-current-command :data))
+                    (cont (plist-get stack-mode-current-command :cont)))
+               (funcall cont data value))
+             (stack-mode-log "Ignoring response")))))
+
 
 (defun stack-mode-sentinel (process event)
   (with-current-buffer (stack-mode-buffer (stack-mode-name-from-process process))
