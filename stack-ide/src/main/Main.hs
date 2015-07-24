@@ -1,19 +1,22 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Main where
 
 import Control.Monad (when)
-import Control.Monad.Logger (runStderrLoggingT, LoggingT(..))
+import Control.Monad.Logger (defaultLogStr, LoggingT(..))
 import Data.Aeson
 import Data.Aeson.Parser
 import Data.Aeson.Types
-import Data.ByteString.Lazy.Char8 (toStrict)
 import Data.ByteString.Char8 (hPutStrLn)
+import Data.ByteString.Lazy.Char8 (toStrict)
+import Data.Text.Encoding (decodeUtf8)
 import Stack.Ide
 import Stack.Ide.CmdLine
-import Stack.Ide.JsonAPI ()
+import Stack.Ide.JsonAPI (Response(ResponseLog))
 import Stack.Ide.Util.ValueStream (newStream, nextInStream)
 import System.IO (stdin, stdout, stderr, hSetBuffering, BufferMode(..))
+import System.Log.FastLogger (fromLogStr)
 
 main :: IO ()
 main = do
@@ -29,14 +32,13 @@ main = do
   -- encounter an exception in the input 'Response' value.  In these
   -- cases, we can end up writing a 'ResponseFatalError' in the middle
   -- of a partially serialized 'Response.
-  let clientIO = ClientIO
-        { sendResponse = hPutStrLn stdout . toStrict . encode . toJSON
-        , receiveRequest = fmap fromJSON $ nextInStream input
-        , logMessage = \loc source level str ->
-            when (optVerbose opts) $
-              runStderrLoggingT $ LoggingT $ \func -> func loc source level str
-        }
-        where fromJSON = parseEither parseJSON
+  let sendResponse = hPutStrLn stdout . toStrict . encode . toJSON
+      receiveRequest = fmap (parseEither parseJSON) $ nextInStream input
+      -- Ideally this wouldn't roundtrip through Utf8 encoding, but ohwell.
+      logMessage loc source level str =
+        when (optVerbose opts) $
+          sendResponse $ ResponseLog $ decodeUtf8 $ fromLogStr $ defaultLogStr loc source level str
+      clientIO = ClientIO {..}
 
   -- Disable buffering for interactive piping
   mapM_ (flip hSetBuffering NoBuffering) [stdout, stderr]

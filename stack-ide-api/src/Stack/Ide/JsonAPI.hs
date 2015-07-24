@@ -113,6 +113,7 @@ data Response =
   | ResponseProcessDone RunResult
   | ResponseNoProcessError
   -- Misc
+  | ResponseLog Text
   | ResponseInvalidRequest String
   | ResponseFatalError String
   | ResponseShutdownSession

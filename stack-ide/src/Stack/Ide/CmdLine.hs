@@ -49,7 +49,7 @@ parseOptions :: Parser Options
 parseOptions = Options
   <$> parseInitParams
   <*> parseConfig
-  <*> switch (long "verbose" <> short 'v' <> help "Send log messages to stderr")
+  <*> switch (long "verbose" <> short 'v' <> help "Send log messages to client")
 
 {-------------------------------------------------------------------------------
   Parsers for ide-backend types
