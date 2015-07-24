@@ -224,6 +224,5 @@ $(concat <$> mapM (deriveJSON defaultOptions)
   , ''ResponseExpType
   , ''ResponseSpanInfo
   , ''Targets
-  , ''UpdateStatus
   , ''VersionInfo
   ])
