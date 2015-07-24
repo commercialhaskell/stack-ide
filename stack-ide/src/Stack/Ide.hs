@@ -74,7 +74,7 @@ ideBackendClientVersion = VersionInfo 0 1 0
 
 mainLoop :: ClientIO -> IdeSession -> IO ()
 mainLoop clientIO session0 = do
-  updateSession session0 (updateCodeGeneration True) ignoreProgress
+  updateSession session0 (updateCodeGeneration True) ignoreStatus
   mprocessRef <- newIORef Nothing
   go session0 mprocessRef
   where
@@ -95,9 +95,8 @@ mainLoop clientIO session0 = do
             send $ ResponseInvalidRequest err
             loop
           Right (RequestUpdateSession upd) -> do
-            updateSession session (mconcat (map makeSessionUpdate upd)) $ \progress ->
-              send $ ResponseUpdateSession (Just progress)
-            send $ ResponseUpdateSession Nothing
+            updateSession session (mconcat (map makeSessionUpdate upd)) $ \status ->
+              send $ ResponseUpdateSession status
             errors <- getSourceErrors session
             if all ((== KindWarning) . errorKind) errors
               then go session mprocessRef
@@ -185,8 +184,8 @@ mainLoop clientIO session0 = do
             loop
           Right RequestShutdownSession ->
             send $ ResponseShutdownSession
-    ignoreProgress :: Progress -> IO ()
-    ignoreProgress _ = return ()
+    ignoreStatus :: UpdateStatus -> IO ()
+    ignoreStatus _ = return ()
 
 annotateTypeInfo :: Autocomplete -> (SourceSpan, Text) -> ResponseAnnExpType
 annotateTypeInfo autocomplete (span, info) =

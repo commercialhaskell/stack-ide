@@ -100,7 +100,7 @@ data Response =
     -- | Sent on session initialization
     ResponseWelcome VersionInfo
     -- | Nothing indicates the update completed
-  | ResponseUpdateSession (Maybe Progress)
+  | ResponseUpdateSession UpdateStatus
   | ResponseGetSourceErrors [SourceError]
   | ResponseGetAnnSourceErrors [AnnSourceError]
   | ResponseGetLoadedModules [ModuleName]
@@ -209,19 +209,21 @@ sliceSpans ix txt ((fr, to, x) : xs) =
 --------------------------------------------------------------------------------
 -- For the moment we use Aeson's built-in instance deriver
 
-$(deriveJSON defaultOptions ''AnnSourceError)
-$(deriveJSON defaultOptions ''MsgAnn)
-$(deriveJSON defaultOptions ''CodeVariety)
-$(deriveJSON defaultOptions ''AutocompletionInfo)
-$(deriveJSON defaultOptions ''AutocompletionSpan)
-$(deriveJSON defaultOptions ''RequestSessionUpdate)
-$(deriveJSON defaultOptions ''Progress)
-$(deriveJSON defaultOptions ''Targets)
-$(deriveJSON defaultOptions ''VersionInfo)
-$(deriveJSON defaultOptions ''Request)
-$(deriveJSON defaultOptions ''Response)
-$(deriveJSON defaultOptions ''ResponseSpanInfo)
-$(deriveJSON defaultOptions ''ResponseExpType)
-$(deriveJSON defaultOptions ''ResponseAnnExpType)
-$(deriveJSON defaultOptions ''Ann)
-$(deriveJSON defaultOptions ''CodeAnn)
+$(concat <$> mapM (deriveJSON defaultOptions)
+  [ ''Ann
+  , ''AnnSourceError
+  , ''AutocompletionInfo
+  , ''AutocompletionSpan
+  , ''CodeAnn
+  , ''CodeVariety
+  , ''MsgAnn
+  , ''Request
+  , ''RequestSessionUpdate
+  , ''Response
+  , ''ResponseAnnExpType
+  , ''ResponseExpType
+  , ''ResponseSpanInfo
+  , ''Targets
+  , ''UpdateStatus
+  , ''VersionInfo
+  ])
