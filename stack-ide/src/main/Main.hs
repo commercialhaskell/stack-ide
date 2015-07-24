@@ -2,6 +2,8 @@
 
 module Main where
 
+import Control.Monad (when)
+import Control.Monad.Logger (runStderrLoggingT, LoggingT(..))
 import Data.Aeson
 import Data.Aeson.Parser
 import Data.Aeson.Types
@@ -15,6 +17,7 @@ import System.IO (stdin, stdout, stderr, hSetBuffering, BufferMode(..))
 
 main :: IO ()
 main = do
+  opts <- getCommandLineOptions
   input <- newStream stdin
   -- We separate JSON values in the output by newlines, so that
   -- editors have a means to split the input into separate
@@ -29,9 +32,11 @@ main = do
   let clientIO = ClientIO
         { sendResponse = hPutStrLn stdout . toStrict . encode . toJSON
         , receiveRequest = fmap fromJSON $ nextInStream input
+        , logMessage = \loc source level str ->
+            when (optVerbose opts) $
+              runStderrLoggingT $ LoggingT $ \func -> func loc source level str
         }
         where fromJSON = parseEither parseJSON
-  opts <- getCommandLineOptions
 
   -- Disable buffering for interactive piping
   mapM_ (flip hSetBuffering NoBuffering) [stdout, stderr]

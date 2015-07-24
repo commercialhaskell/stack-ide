@@ -43,6 +43,7 @@ executable stack-ide
   build-depends:       base >= 4.5  && < 5,
                        aeson,
                        bytestring,
+                       monad-logger,
                        stack-ide,
                        stack-ide-api
   default-language:    Haskell2010

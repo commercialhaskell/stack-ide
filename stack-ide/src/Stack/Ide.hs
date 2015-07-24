@@ -22,6 +22,7 @@ import           Data.Ord
 import           Data.Text (Text)
 import qualified Data.Text as Text
 import           IdeSession
+import           IdeSession.Util.Logger
 import           Prelude hiding (mod, span)
 import           Stack.Ide.AnnotateHaskell (annotateType, Autocomplete)
 import           Stack.Ide.AnnotateMessage (annotateMessage)
@@ -33,12 +34,15 @@ import           System.Exit (exitWith, exitFailure)
 data ClientIO = ClientIO
     { sendResponse :: Response -> IO ()
     , receiveRequest :: IO (Either String Request)
+    , logMessage :: LogFunc
     }
 
 startEmptySession :: ClientIO -> Options -> IO ()
 startEmptySession clientIO Options{..} = do
+    let callbacks = IdeCallbacks
+            { ideCallbacksLogFunc = logMessage clientIO }
     sendWelcome clientIO
-    bracket (initSession optInitParams optConfig)
+    bracket (initSessionWithCallbacks callbacks optInitParams optConfig)
             shutdownSession
             (mainLoop clientIO)
 

@@ -28,6 +28,7 @@ import IdeSession
 data Options = Options {
     optInitParams :: SessionInitParams
   , optConfig     :: SessionConfig
+  , optVerbose    :: Bool
   }
 
 
@@ -48,7 +49,7 @@ parseOptions :: Parser Options
 parseOptions = Options
   <$> parseInitParams
   <*> parseConfig
-
+  <*> switch (long "verbose" <> short 'v' <> help "Send log messages to stderr")
 
 {-------------------------------------------------------------------------------
   Parsers for ide-backend types
