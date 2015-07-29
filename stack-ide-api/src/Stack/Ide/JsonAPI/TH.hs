@@ -1,7 +1,7 @@
 -- | Auxiliary definitions for use in the JsonAPI module
 --
 -- Defined as a separate module only because of TH stage restrictions.
-module Stack.Ide.JsonAPI.Aux where
+module Stack.Ide.JsonAPI.TH where
 
 import Data.Char
 

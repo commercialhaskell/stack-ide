@@ -56,7 +56,7 @@ import qualified Data.Text as Text
 import qualified Data.Text.Encoding as T
 import IdeSession.Types.Progress
 import IdeSession.Types.Public hiding (idProp, Value)
-import Stack.Ide.JsonAPI.Aux
+import Stack.Ide.JsonAPI.TH
 
 {-------------------------------------------------------------------------------
   Types
