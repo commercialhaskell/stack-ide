@@ -32,8 +32,8 @@ import           System.Environment (getEnvironment)
 import           System.Exit (exitWith, exitFailure)
 
 data ClientIO = ClientIO
-    { sendResponse :: Response -> IO ()
-    , receiveRequest :: IO (Either String Request)
+    { sendResponse :: Sequenced Response -> IO ()
+    , receiveRequest :: IO (Either String (Sequenced Request))
     , logMessage :: LogFunc
     }
 
@@ -48,7 +48,7 @@ startEmptySession clientIO Options{..} = do
 
 sendWelcome :: ClientIO -> IO ()
 sendWelcome clientIO =
-    sendResponse clientIO $ ResponseWelcome ideBackendClientVersion
+    sendResponse clientIO $ NoSeq $ ResponseWelcome ideBackendClientVersion
 
 sendExceptions :: ClientIO -> IO () -> IO ()
 sendExceptions clientIO inner =
@@ -56,7 +56,7 @@ sendExceptions clientIO inner =
     case fromException ex of
       Just ec -> exitWith ec
       Nothing -> do
-        sendResponse clientIO $ ResponseFatalError (show ex)
+        sendResponse clientIO $ NoSeq $ ResponseFatalError (show ex)
         exitFailure
 
 -- | Version of the client API
@@ -64,7 +64,7 @@ sendExceptions clientIO inner =
 -- This should be incremented whenever we make a change that editors might need
 -- to know about.
 ideBackendClientVersion :: VersionInfo
-ideBackendClientVersion = VersionInfo 0 1 0
+ideBackendClientVersion = VersionInfo 0 1 1
 
 {-------------------------------------------------------------------------------
   Main loop
@@ -78,7 +78,6 @@ mainLoop clientIO session0 = do
   mprocessRef <- newIORef Nothing
   go session0 mprocessRef
   where
-    send = sendResponse clientIO
     -- This is called after every session update that doesn't yield
     -- compile errors.  If there are compile errors, we use the info
     -- from the previous update.
@@ -89,8 +88,9 @@ mainLoop clientIO session0 = do
       expTypes <- getExpTypes session
       autoComplete <- getAutocompletion session
       fix $ \loop -> do
-        ereq <- receiveRequest clientIO
-        case ereq of
+        ereq <- pullSeq <$> receiveRequest clientIO
+        let send = sendResponse clientIO . withSameSeqAs ereq
+        case unsequenced ereq of
           Left err -> do
             send $ ResponseInvalidRequest err
             loop
@@ -186,6 +186,9 @@ mainLoop clientIO session0 = do
             send $ ResponseShutdownSession
     ignoreStatus :: UpdateStatus -> IO ()
     ignoreStatus _ = return ()
+
+    pullSeq :: Either e (Sequenced a) -> Sequenced (Either e a)
+    pullSeq = either (NoSeq . Left) (fmap Right)
 
 annotateTypeInfo :: Autocomplete -> (SourceSpan, Text) -> ResponseAnnExpType
 annotateTypeInfo autocomplete (span, info) =

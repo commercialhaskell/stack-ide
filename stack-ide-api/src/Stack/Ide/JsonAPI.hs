@@ -38,6 +38,7 @@ module Stack.Ide.JsonAPI (
   , VersionInfo(..)
   , Identifier
   , Targets(..)
+  , Sequenced(..), unsequenced, withSameSeqAs
   , sliceSpans
   ) where
 
@@ -48,6 +49,7 @@ import Data.Aeson.Types
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy      as Lazy
 import qualified Data.ByteString.Lazy as L
+import qualified Data.HashMap.Strict as H
 import Data.Maybe (fromMaybe)
 import Data.Monoid
 import Data.Text (Text)
@@ -205,6 +207,35 @@ sliceSpans ix txt ((fr, to, x) : xs) =
     (before, rest) = Text.splitAt fr' txt
     fr' = max 0 (fr - ix)
 
+
+-- | An extension of messages with an optional sequence code,
+--   an uninterpreted JSON value. See (#39) for motivation.
+data Sequenced a =
+    NoSeq  a
+  | HasSeq Value a
+  deriving (Show, Eq, Functor)
+
+unsequenced :: Sequenced a -> a
+unsequenced (NoSeq    a) = a
+unsequenced (HasSeq _ a) = a
+
+withSameSeqAs :: Sequenced a -> b -> Sequenced b
+withSameSeqAs sa b = b <$ sa
+
+instance ToJSON a => ToJSON (Sequenced a) where
+  toJSON (NoSeq    a) = toJSON a
+  toJSON (HasSeq s a) =
+    case toJSON a of
+      Object o -> Object (H.insert "seq" s o)
+      json_a   -> json_a
+
+instance FromJSON a => FromJSON (Sequenced a) where
+  parseJSON x
+    = case x of
+        Object o | Just s <- H.lookup "seq" o ->
+          HasSeq s <$> parseJSON (Object $ H.delete "seq" o)
+        _ ->
+          NoSeq <$> parseJSON x
 
 --------------------------------------------------------------------------------
 -- For the moment we use Aeson's built-in instance deriver
