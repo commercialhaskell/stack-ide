@@ -13,7 +13,7 @@ import Data.ByteString.Lazy.Char8 (toStrict)
 import Data.Text.Encoding (decodeUtf8)
 import Stack.Ide
 import Stack.Ide.CmdLine
-import Stack.Ide.JsonAPI (Response(ResponseLog))
+import Stack.Ide.JsonAPI (Response(ResponseLog), Sequenced(NoSeq))
 import Stack.Ide.Util.ValueStream (newStream, nextInStream)
 import System.IO (stdin, stdout, stderr, hSetBuffering, BufferMode(..))
 import System.Log.FastLogger (fromLogStr)
@@ -37,7 +37,7 @@ main = do
       -- Ideally this wouldn't roundtrip through Utf8 encoding, but ohwell.
       logMessage loc source level str =
         when (optVerbose opts) $
-          sendResponse $ ResponseLog $ decodeUtf8 $ fromLogStr $ defaultLogStr loc source level str
+          sendResponse $ NoSeq $ ResponseLog $ decodeUtf8 $ fromLogStr $ defaultLogStr loc source level str
       clientIO = ClientIO {..}
 
   -- Disable buffering for interactive piping
