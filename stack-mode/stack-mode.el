@@ -144,10 +144,7 @@
   "Load the current buffer's file."
   (interactive)
   (save-buffer)
-  ;; FIXME: probably should check if the buffer is part of the
-  ;; project, or someting along those lines>
-  (with-current-buffer
-      (stack-mode-buffer)
+  (with-current-buffer (stack-mode-buffer)
     (stack-mode-reload)))
 
 (defun stack-mode-goto ()
@@ -496,40 +493,45 @@ directory."
 
 (defun stack-mode-get-source-errors-callback (_ reply)
   "Handle the reply from getting source errors."
-  (let ((any-errors nil)
-        (warnings 0))
-    (cl-loop
-     for item in (mapcar #'identity (stack-lookup 'errors reply))
-     do (let* ((msg (stack-lookup 'msg item))
-               (kind (stack-lookup 'kind item))
-               (span (stack-lookup 'span item))
-               (fp (stack-lookup 'filePath span))
-               (sl (stack-lookup 'fromLine span))
-               (sc (stack-lookup 'fromColumn span))
-               (el (stack-lookup 'toLine span))
-               (ec (stack-lookup 'toColumn span)))
-          (cond ((string= kind "error")
-                 (setq any-errors t))
-                ((string= kind "warning")
-                 (setq warnings (1+ warnings))))
-          (message "%s"
-                   (propertize
-                    (format "%s:(%d,%d)-(%d,%d): \n%s"
-                            fp sl sc el ec msg)
-                    'face
-                    (cond
-                     ((string= kind "warning")
-                      'compilation-warning)
-                     ((string= kind "error")
-                      'compilation-error)
-                     (t nil))))))
-    (unless any-errors
-      (if (= 0 warnings)
-          (message "OK.")
-        (message (propertize "OK (%d warning%s)." 'face 'compilation-warning)
-                 warnings
-                 (if (= 1 warnings) "" "s")))))
-  :done)
+  (let ((tag (stack-tag reply)))
+    (cond
+     ((string= tag "ResponseUpdateSession")
+      :continue)
+     ((string= tag "ResponseGetSourceErrors")
+      (let ((any-errors nil)
+            (warnings 0))
+        (cl-loop
+         for item in (mapcar #'identity (stack-contents reply))
+         do (let* ((kind (stack-lookup 'errorKind item))
+                   (span (stack-contents (stack-lookup 'errorSpan item)))
+                   (msg (stack-lookup 'errorMsg item))
+                   (fp (stack-lookup 'spanFilePath span))
+                   (sl (stack-lookup 'spanFromLine span))
+                   (sc (stack-lookup 'spanFromColumn span))
+                   (el (stack-lookup 'spanToLine span))
+                   (ec (stack-lookup 'spanToColumn span)))
+              (cond ((string= kind "KindError")
+                     (setq any-errors t))
+                    ((string= kind "KindWarning")
+                     (setq warnings (1+ warnings))))
+              (message "%s"
+                       (propertize
+                        (format "%s:(%d,%d)-(%d,%d): \n%s"
+                                fp sl sc el ec msg)
+                        'face
+                        (cond
+                         ((string= kind "KindEarning")
+                          'compilation-warning)
+                         ((string= kind "KindError")
+                          'compilation-error))))))
+        (unless any-errors
+          (if (= 0 warnings)
+              (message "OK.")
+            (message (propertize "OK (%d warning%s)." 'face 'compilation-warning)
+                     warnings
+                     (if (= 1 warnings) "" "s")))))
+      :done)
+     (t :done))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Span functions
@@ -595,6 +597,10 @@ identifier's points."
 (defun stack-contents (object)
   "Get from a JSON object."
   (stack-lookup 'contents object))
+
+(defun stack-tag (object)
+  "Get the tag of an object."
+  (stack-lookup 'tag object))
 
 (defun stack-lookup-contents (key object)
   "Get from a JSON object."
