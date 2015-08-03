@@ -36,6 +36,7 @@
             (define-key map (kbd "M-.") 'stack-mode-goto)
             (define-key map (kbd "C-c C-k") 'stack-mode-clear)
             (define-key map (kbd "C-c C-t") 'stack-mode-type)
+            (define-key map (kbd "C-c C-i") 'stack-mode-info)
             (define-key map (kbd "C-c C-l") 'stack-mode-load)
             map))
 
@@ -196,58 +197,98 @@
     (if insert-value
         (message "%s" (haskell-fontify-as-mode ty 'haskell-mode)))))
 
-(defun stack-mode-type (&optional insert-value)
-  "Display type info of thing at point."
-  (interactive "P")
+(defun stack-mode-info ()
+  "Display the info of the thing at point."
+  (interactive)
   (let* ((filename (buffer-file-name))
          (module-name (haskell-guess-module-name))
          (points (stack-mode-points))
          (orig (point))
          (span (stack-mode-span-from-points (car points)
-                                            (cdr points))))
-    (let* ((types (stack-contents
-                   (stack-mode-get-exp-types
-                    module-name
-                    (with-current-buffer (stack-mode-buffer)
-                      (file-relative-name filename default-directory))
-                    span)))
-           (types (mapcar #'identity types))
-           (code (buffer-substring-no-properties
-                  (car points)
-                  (cdr points)))
-           (type (stack-contents (car types)))
-           (ty (stack-lookup 'text type)))
-      (if insert-value
-          (let ((ident-pos (haskell-ident-pos-at-point)))
-            (cond
-             ((region-active-p)
-              (delete-region (region-beginning)
-                             (region-end))
-              (insert "(" code " :: " ty ")")
-              (goto-char (1+ orig)))
-             ((= (line-beginning-position) (car ident-pos))
-              (goto-char (line-beginning-position))
-              (insert code " :: " (haskell-fontify-as-mode ty 'haskell-mode)
-                      "\n"))
-             (t
-              (save-excursion
-                (goto-char (car ident-pos))
-                (let ((col (current-column)))
-                  (save-excursion (insert "\n")
-                                  (indent-to col))
-                  (insert code " :: " (haskell-fontify-as-mode ty 'haskell-mode)))))))
-        (unless (null types)
-          (message
-           "%s"
-           (mapconcat (lambda (type)
-                        (haskell-fontify-as-mode
-                         (concat
-                          code
-                          " :: "
-                          (elt type 0))
-                         'haskell-mode))
-                      (subseq types 0 1)
-                      "\n")))))))
+                                            (cdr points)))
+         (info (stack-mode-get-span-info
+                module-name
+                (with-current-buffer (stack-mode-buffer)
+                  (file-relative-name filename default-directory))
+                span))
+         (info-contents (stack-contents (elt (elt (stack-contents info) 0) 0)))
+         (scope (stack-lookup 'idScope info-contents))
+         (prop (stack-lookup 'idProp info-contents))
+         (qual (stack-lookup 'idImportQual scope))
+         (from (stack-lookup 'idImportedFrom scope))
+         (span (stack-lookup 'idImportSpan scope))
+
+         (space (stack-lookup 'idSpace prop))
+         (idDefSpan (stack-lookup 'idDefSpan prop))
+         (idDefinedIn (stack-lookup 'idDefinedIn prop))
+         (modulePackage (stack-lookup 'modulePackage idDefinedIn))
+         (moduleName (stack-lookup 'moduleName idDefinedIn))
+         (packageVersion (stack-lookup 'packageVersion modulePackage))
+         (packageKey (stack-lookup 'packageKey modulePackage))
+         (packageName (stack-lookup 'packageKey modulePackage))
+         (idType (stack-lookup 'idType prop))
+         (idName (stack-lookup 'idName prop)))
+    (message
+     (concat
+      "Identifier: " (haskell-fontify-as-mode idName 'haskell-mode) "\n"
+      "Type: " (haskell-fontify-as-mode idType 'haskell-mode) "\n"
+      "Module: " (haskell-fontify-as-mode moduleName 'haskell-mode) "\n"
+      "Package: "  (if (string= "main" packageName)
+                       "(this one)"
+                     packageName)))))
+
+(defun stack-mode-type (&optional insert-value))
+"Display type info of thing at point.")
+(interactive "P")
+(let* ((filename (buffer-file-name))
+       (module-name (haskell-guess-module-name))
+       (points (stack-mode-points))
+       (orig (point))
+       (span (stack-mode-span-from-points (car points)
+                                          (cdr points))))
+  (let* ((types (stack-contents
+                 (stack-mode-get-exp-types
+                  module-name
+                  (with-current-buffer (stack-mode-buffer)
+                    (file-relative-name filename default-directory))
+                  span)))
+         (types (mapcar #'identity types))
+         (code (buffer-substring-no-properties
+                (car points)
+                (cdr points)))
+         (type (stack-contents (car types)))
+         (ty (stack-lookup 'text type)))
+    (if insert-value
+        (let ((ident-pos (haskell-ident-pos-at-point)))
+          (cond
+           ((region-active-p)
+            (delete-region (region-beginning)
+                           (region-end))
+            (insert "(" code " :: " ty ")")
+            (goto-char (1+ orig)))
+           ((= (line-beginning-position) (car ident-pos))
+            (goto-char (line-beginning-position))
+            (insert code " :: " (haskell-fontify-as-mode ty 'haskell-mode)
+                    "\n"))
+           (t
+            (save-excursion
+              (goto-char (car ident-pos))
+              (let ((col (current-column)))
+                (save-excursion (insert "\n")
+                                (indent-to col))
+                (insert code " :: " (haskell-fontify-as-mode ty 'haskell-mode)))))))
+      (unless (null types)
+        (message
+         "%s"
+         (mapconcat (lambda (type)
+                      (haskell-fontify-as-mode
+                       (concat
+                        code
+                        " :: "
+                        (elt type 0))
+                       'haskell-mode))
+                    (subseq types 0 1)
+                    "\n")))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Process filters and sentinel
