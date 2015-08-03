@@ -24,6 +24,7 @@
 (require 'haskell-mode)
 (require 'cl-lib)
 (require 'fifo)
+(require 'checklist)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Modes
@@ -69,11 +70,21 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Interactive functions
 
+(defun stack-mode-status ()
+  "Print the status of the current stack process."
+  (interactive)
+  (if (stack-mode-buffer)
+      (if (stack-mode-process)
+          (if (process-live-p (stack-mode-process))
+              (message "The process is live.")
+            (message "There is a Stack process, but it's dead."))
+        (message "There is a stack buffer, but no Stack process."))
+    (message "There is no Stack buffer.")))
+
 (defun stack-mode-start ()
   "Start an inferior process and buffer."
   (interactive)
-  (if (and (stack-mode-process)
-           (process-live-p (stack-mode-process)))
+  (if (stack-mode-live-p)
       (switch-to-buffer (stack-mode-buffer))
     (let ((default-directory (stack-mode-dir)))
       (with-current-buffer (stack-mode-buffer)
@@ -82,19 +93,24 @@
         (setq stack-mode-queue (fifo-make))
         (setq stack-mode-current-command nil)
         (setq stack-mode-buffer "")
-        (stack-mode-log "Starting: stack ide")
+        (inferior-stack-mode)
         (let* ((name (stack-mode-process-name (stack-mode-name)))
+               (args (append (list name
+                                   nil
+                                   stack-mode-proc-path
+                                   "ide"
+                                   "start")
+                             (checklist-read-checklist
+                              "Select packages from your Stack configuration:"
+                              (mapcar (lambda (name)
+                                        (cons name name))
+                                      (stack-mode-packages)))))
                (process (or (get-process name)
-                            (apply #'start-process
-                                   (append (list name
-                                                 nil
-                                                 stack-mode-proc-path
-                                                 "ide")
-                                           (split-string (read-from-minibuffer "Targets: ")
-                                                         " "))))))
+                            (progn (stack-mode-log "Starting: %S" args)
+                                   (apply #'start-process
+                                          args)))))
           (set-process-sentinel process 'stack-mode-sentinel)
-          (set-process-filter process 'stack-mode-filter))
-        (inferior-stack-mode)))))
+          (set-process-filter process 'stack-mode-filter))))))
 
 (defun stack-mode-stop ()
   "Stop the process."
@@ -112,6 +128,11 @@
   (stack-mode-stop)
   (stack-mode-start))
 
+(defun stack-mode-live-p ()
+  "Is the process alive?"
+  (and (stack-mode-process)
+       (process-live-p (stack-mode-process))))
+
 (defun stack-mode-clear ()
   "Clear the interaction buffer."
   (interactive)
@@ -127,7 +148,7 @@
   ;; project, or someting along those lines>
   (with-current-buffer
       (stack-mode-buffer)
-      (stack-mode-reload)))
+    (stack-mode-reload)))
 
 (defun stack-mode-goto ()
   "Go to definition of thing at point."
@@ -236,8 +257,7 @@
 
 (defun stack-mode-filter (process response)
   (with-current-buffer (stack-mode-buffer (stack-mode-name-from-process process))
-    (let* ((lines (split-string (concat stack-mode-buffer response) "\n"))
-           )
+    (let* ((lines (split-string (concat stack-mode-buffer response) "\n")))
       (setq stack-mode-buffer (car (last lines)))
       (setq lines (butlast lines))
       (while lines
@@ -261,33 +281,30 @@
                             error-msg))
                     (t
                      (error "A command handler must return either :done or :continue,
-but it rd: %S
-command S" ret stack-mode-current-command))))
+but it returned: %S
+command was: %S" ret stack-mode-current-command))))
             (cl-loop for line in lines
                      do (stack-mode-log
                          "Extraneous lines after command completed: %s"
                          (haskell-fontify-as-mode line 'javascript-mode)))
             (setq stack-mode-current-command nil)
             (setq lines nil)
-            (stack-mode-queue-trigger))))
-      )))
+            (stack-mode-queue-trigger)))))))
 
 (defun stack-mode-handle-response (value)
-
-    (ecase (assoc 'tag value)
-      ;; TODO: handle these responses
-      ("ResponseWelcome" ())
-      ("ResponseUpdateSession" ())
-      ("ResponseProcessOutput" ())
-      ("ResponseProcessDone" ())
-      ("ReseponseLog" ())
-      ("ResponseFatalError" ())
-      (t (if stack-mode-current-command
-             (let* ((data (plist-get stack-mode-current-command :data))
-                    (cont (plist-get stack-mode-current-command :cont)))
-               (funcall cont data value))
-             (stack-mode-log "Ignoring response")))))
-
+  (ecase (assoc 'tag value)
+    ;; TODO: handle these responses
+    ("ResponseWelcome" ())
+    ("ResponseUpdateSession" ())
+    ("ResponseProcessOutput" ())
+    ("ResponseProcessDone" ())
+    ("ReseponseLog" ())
+    ("ResponseFatalError" ())
+    (t (if stack-mode-current-command
+           (let* ((data (plist-get stack-mode-current-command :data))
+                  (cont (plist-get stack-mode-current-command :cont)))
+             (funcall cont data value))
+         (stack-mode-log "Ignoring response")))))
 
 (defun stack-mode-sentinel (process event)
   (with-current-buffer (stack-mode-buffer (stack-mode-name-from-process process))
@@ -316,10 +333,15 @@ command S" ret stack-mode-current-command))))
 (defun stack-mode-enqueue (json data cont)
   "Enqueue a JSON command to the command queue, calling (CONT
 DATA line) for each response line until CONT returns nil."
-  (stack-mode-log "-> %s" (haskell-fontify-as-mode (json-encode json) 'javascript-mode))
-  (fifo-push (stack-mode-queue)
-             (list :json json :data data :cont cont))
-  (stack-mode-queue-trigger))
+  (cond
+   ((stack-mode-live-p)
+    (stack-mode-log "-> %s" (haskell-fontify-as-mode (json-encode json) 'javascript-mode))
+    (fifo-push (stack-mode-queue)
+               (list :json json :data data :cont cont))
+    (stack-mode-queue-trigger))
+   ((y-or-n-p (format "The Stack process isn't running for the Stack configuration in: %s\nStart now?"
+                      (stack-mode-dir)))
+    (stack-mode-start))))
 
 (defun stack-mode-call (json)
   "Call a JSON command. Wait for any existing queued commands to
@@ -361,6 +383,10 @@ command."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Project functions
+
+(defun stack-mode-packages ()
+  "Get packages for the Stack configuration."
+  (split-string (shell-command-to-string "stack ide packages") "\n" t))
 
 (defun stack-mode-process ()
   "Get the current process."
