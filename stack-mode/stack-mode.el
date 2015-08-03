@@ -496,6 +496,11 @@ directory."
   (let ((tag (stack-tag reply)))
     (cond
      ((string= tag "ResponseUpdateSession")
+      (let* ((contents (stack-contents reply))
+             (tag (stack-tag contents)))
+        (cond
+         ((string= tag "UpdateStatusProgress")
+          (message "%s" (stack-lookup 'progressOrigMsg (stack-contents contents))))))
       :continue)
      ((string= tag "ResponseGetSourceErrors")
       (let ((any-errors nil)
