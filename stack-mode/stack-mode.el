@@ -31,15 +31,26 @@
 ;; Modes
 
 (define-minor-mode stack-mode
-  "A minor mode enabling various features based on stack-ide."
-  :lighter " Stack-IDE"
+  "A minor mode enabling various features based on stack-ide.
+
+Automatically starts and stops flycheck-mode when you
+enable/disable it. It makes this assumption in the interest of
+easier user experience. Disable with `stack-mode-manage-flycheck'."
+  :lighter " Stack"
   :keymap (let ((map (make-sparse-keymap)))
             (define-key map (kbd "M-.") 'stack-mode-goto)
             (define-key map (kbd "C-c C-k") 'stack-mode-clear)
             (define-key map (kbd "C-c C-t") 'stack-mode-type)
             (define-key map (kbd "C-c C-i") 'stack-mode-info)
             (define-key map (kbd "C-c C-l") 'stack-mode-load)
-            map))
+            map)
+  (when (buffer-file-name)
+    (if stack-mode
+        (when stack-mode-manage-flycheck
+          (flycheck-mode 1)
+          (flycheck-select-checker 'stack-ide))
+      (when stack-mode-manage-flycheck
+        (flycheck-mode -1)))))
 
 (define-derived-mode inferior-stack-mode fundamental-mode "Inferior-Stack-IDE"
   "Major mode for interacting with an inferior stack-ide process.")
@@ -60,6 +71,19 @@
   :type 'string
   :group 'stack-mode)
 
+(defcustom stack-mode-manage-flycheck
+  t
+  "Automatically start and stop flycheck when the minor mode is
+enabled/disabled."
+  :type 'boolean
+  :group 'stack-mode)
+
+(defcustom stack-mode-print-error-messages
+  nil
+  "Print error messages after loading the project?"
+  :type 'boolean
+  :group 'stack-mode)
+
 (defvar stack-mode-queue nil)
 (make-variable-buffer-local 'stack-mode-queue)
 
@@ -68,6 +92,9 @@
 
 (defvar stack-mode-name nil)
 (make-variable-buffer-local 'stack-mode-name)
+
+(defvar stack-mode-tried-to-start nil)
+(make-variable-buffer-local 'stack-mode-tried-to-start)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Interactive functions
@@ -88,36 +115,25 @@
   (interactive)
   (if (stack-mode-live-p)
       (switch-to-buffer (stack-mode-buffer))
-    (let ((default-directory (stack-mode-dir)))
-      (with-current-buffer (stack-mode-buffer)
-        (setq buffer-read-only t)
-        (cd (stack-mode-dir))
-        (inferior-stack-mode)
-        (stack-mode-set-initial-command)
-        (setq stack-mode-buffer "")
-        (let* ((name (stack-mode-process-name (stack-mode-name)))
-               (args (append (list name
-                                   nil
-                                   stack-mode-proc-path
-                                   "ide"
-                                   "start")
-                             (let ((choices (stack-mode-packages)))
-                               (cond ((null choices)
-                                      (error "No package targets to load in your Stack configuration!"))
-                                     ((null (cdr choices)) ;; Singleton
-                                      choices)
-                                     (t
-                                      (checklist-read-checklist
-                                       "Select packages from your Stack configuration:"
-                                       (mapcar (lambda (name)
-                                                 (cons name name))
-                                               choices)))))))
-               (process (or (get-process name)
-                            (progn (stack-mode-log "Starting: %S" args)
-                                   (apply #'start-process
-                                          args)))))
-          (set-process-sentinel process 'stack-mode-sentinel)
-          (set-process-filter process 'stack-mode-filter))))))
+    (with-current-buffer (stack-mode-buffer)
+      (setq buffer-read-only t)
+      (inferior-stack-mode)
+      (stack-mode-set-initial-command)
+      (setq stack-mode-buffer "")
+      (let* ((project-name (stack-mode-name))
+             (name (stack-mode-process-name project-name))
+             (args (append (list name
+                                 nil
+                                 stack-mode-proc-path
+                                 "ide"
+                                 "start")
+                           (list project-name)))
+             (process (or (get-process name)
+                          (progn (stack-mode-log "Starting: %S" args)
+                                 (apply #'start-process
+                                        args)))))
+        (set-process-sentinel process 'stack-mode-sentinel)
+        (set-process-filter process 'stack-mode-filter)))))
 
 (defun stack-mode-set-initial-command ()
   "Set the initial command callback. The `stack ide` command will
@@ -127,7 +143,8 @@ start with."
         (list :json nil
               :data nil
               :cont 'stack-mode-loading-callback))
-  (setq stack-mode-queue (fifo-make)))
+  (setq stack-mode-queue (fifo-make))
+  (message "Set initial command."))
 
 (defun stack-mode-stop ()
   "Stop the process."
@@ -325,8 +342,11 @@ start with."
                  "<- %s"
                  (haskell-fontify-as-mode line 'javascript-mode))
                 (when (let* ((error-msg nil)
+                             (json (condition-case e
+                                       (json-read-from-string line)
+                                     (error "Problem reading JSON from server, probably an error message:\n%s" line)))
                              (ret (condition-case e
-                                      (funcall cont data (json-read-from-string line))
+                                      (funcall cont data json)
                                     (error (setq error-msg e)
                                            :error))))
                         (ecase ret
@@ -385,9 +405,18 @@ DATA line) for each response line until CONT returns nil."
     (fifo-push (stack-mode-queue)
                (list :json json :data data :cont cont))
     (stack-mode-queue-trigger))
-   ((y-or-n-p (format "The Stack process isn't running for the Stack configuration in: %s\nStart now?"
-                      (stack-mode-dir)))
-    (stack-mode-start))))
+   (t (stack-mode-try-start))))
+
+(defun stack-mode-try-start ()
+  "Try to start, but only try once."
+  (cond
+   ((not stack-mode-tried-to-start)
+    (setq stack-mode-tried-to-start t)
+    (message "Starting a Stack IDE backend process for this project: %s, stack directory: %s"
+             (stack-mode-cabal-name)
+             (stack-mode-dir))
+    (stack-mode-start))
+   (t (message "Attempted to run a Stack IDE command, but the server isn't started. We already tried once this session. Run `M-x stack-mode-restart` to confirm that you want to start it."))))
 
 (defun stack-mode-call (json)
   "Call a JSON command. Wait for any existing queued commands to
@@ -440,10 +469,11 @@ command."
 
 (defun stack-mode-buffer (&optional name)
   "The inferior buffer."
-  (get-buffer-create
-   (stack-mode-buffer-name
-    (or name
-        (stack-mode-name)))))
+  (let ((default-directory (stack-mode-dir)))
+    (get-buffer-create
+     (stack-mode-buffer-name
+      (or name
+          (stack-mode-name))))))
 
 (defun stack-mode-name-from-process (proc)
   "Get the name of the project from the process."
@@ -461,22 +491,30 @@ command."
 
 (defun stack-mode-dir ()
   "The directory for the project."
-  (file-name-directory (stack-yaml-file)))
-
-(defun stack-yaml-file ()
-  "Get the .yaml file path."
-  (shell-command-to-string "stack path --config-location"))
+  (file-name-directory (haskell-cabal-find-file)))
 
 (defun stack-mode-name ()
   "The name for the current project based on the current
 directory."
   (or stack-mode-name
       (setq stack-mode-name
-            (downcase
-             (file-name-nondirectory
-              (directory-file-name
-               (file-name-directory
-                (stack-yaml-file))))))))
+            (or (stack-mode-cabal-name)
+                (downcase
+                 (file-name-nondirectory
+                  (directory-file-name
+                   (file-name-directory
+                    (stack-yaml-file)))))))))
+
+(defun stack-mode-cabal-name ()
+  "Get the name of the session to use, based on the cabal file."
+  (let ((cabal-file (haskell-cabal-find-file)))
+    (if (string-match "\\([^\\/]+\\)\\.cabal$" cabal-file)
+        (let ((name (match-string 1 cabal-file)))
+          (when (not (member name (stack-mode-packages)))
+            (message "This cabal project “%s” isn't in your stack.yaml configuration." name))
+          name)
+      (progn (message "Couldn't figure out cabal file, assuming no project.")
+             nil))))
 
 (defun stack-mode-log (&rest args)
   "Log a string to the inferior buffer."
@@ -585,16 +623,18 @@ directory."
                      (setq any-errors t))
                     ((string= kind "KindWarning")
                      (setq warnings (1+ warnings))))
-              (message "%s"
-                       (propertize
-                        (format "%s:(%d,%d)-(%d,%d): \n%s"
-                                fp sl sc el ec msg)
-                        'face
-                        (cond
-                         ((string= kind "KindEarning")
-                          'compilation-warning)
-                         ((string= kind "KindError")
-                          'compilation-error))))))
+              (when
+                  stack-mode-print-error-messages
+                  (message "%s"
+                           (propertize
+                            (format "%s:(%d,%d)-(%d,%d): \n%s"
+                                    fp sl sc el ec msg)
+                            'face
+                            (cond
+                             ((string= kind "KindEarning")
+                              'compilation-warning)
+                             ((string= kind "KindError")
+                              'compilation-error)))))))
         (unless any-errors
           (if (= 0 warnings)
               (message "OK.")
@@ -680,18 +720,31 @@ identifier's points."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Flycheck integration
 
-(defun stack-mode-flycheck-start (checker flycheck-callback)
+(defun stack-mode-flycheck-start (checker flycheck-callback &optional buffer attempt-count)
   "Run a compile on demand, triggered by Flycheck."
-  (write-region (point-min) (point-max) (buffer-file-name))
-  (clear-visited-file-modtime)
-  (with-current-buffer (stack-mode-buffer)
-    (stack-mode-enqueue
-     `((tag . "RequestUpdateSession")
-       (contents . []))
-     flycheck-callback
-     'stack-mode-flycheck-callback)))
+  (when buffer (set-buffer buffer))
+  (let ((max-attempts 2))
+    (if (not (stack-mode-live-p))
+        (if (> (or attempt-count 0) max-attempts)
+            (message "Stack backend isn't ready for Flycheck use. Giving up (waited %d seconds)."
+                     max-attempts)
+          (message "Stack backend isn't ready. Waiting (%d attempts) ..."
+                   (or attempt-count 0))
+          (progn (stack-mode-try-start)
+                 (run-at-time 1 nil 'stack-mode-flycheck-start checker flycheck-callback
+                        (current-buffer)
+                        (1+ (or attempt-count 0)))))
+      (write-region (point-min) (point-max) (buffer-file-name))
+      (clear-visited-file-modtime)
+      (with-current-buffer (stack-mode-buffer)
+        (stack-mode-enqueue
+         `((tag . "RequestUpdateSession")
+           (contents . []))
+         (list :flycheck-callback flycheck-callback
+               :stack-buffer (current-buffer))
+         'stack-mode-flycheck-callback)))))
 
-(defun stack-mode-flycheck-callback (flycheck-callback reply)
+(defun stack-mode-flycheck-callback (state reply)
   "Callback for the flycheck loading. Once done, it will report
   errors/warnings to CALLBACK."
   (let ((tag (stack-tag reply)))
@@ -707,14 +760,14 @@ identifier's points."
           (stack-mode-enqueue
            `((tag . "RequestGetSourceErrors")
              (contents . []))
-           flycheck-callback
+           state
            'stack-mode-flycheck-errors-callback)
           :done)
          (t :continue))))
      (t
       :continue))))
 
-(defun stack-mode-flycheck-errors-callback (flycheck-callback reply)
+(defun stack-mode-flycheck-errors-callback (state reply)
   "Collect error messages and pass them to FLYCHECK-CALLBACK."
   (let ((tag (stack-tag reply)))
     (cond
@@ -725,7 +778,7 @@ identifier's points."
          do (let* ((kind (stack-lookup 'errorKind item))
                    (span (stack-contents (stack-lookup 'errorSpan item)))
                    (msg (stack-lookup 'errorMsg item))
-                   (fp (stack-lookup 'spanFilePath span))
+                   (filename (stack-lookup 'spanFilePath span))
                    (sl (stack-lookup 'spanFromLine span))
                    (sc (stack-lookup 'spanFromColumn span))
                    (el (stack-lookup 'spanToLine span))
@@ -733,25 +786,28 @@ identifier's points."
               (add-to-list
                'messages
                (flycheck-error-new-at
-                sl
-                sc
+                sl sc
                 (cond
-                 ((string= kind "warning")
-                  'warning)
-                 ((string= kind "error")
-                  'error)
-                 (t 'error))
+                 ((string= kind "KindWarning") 'warning)
+                 ((string= kind "KindError") 'error)
+                 (t (message "kind: %s" kind)'error))
                 msg
                 :checker 'stack-ide
-                :buffer (let ((orig (current-buffer))
-                              (buffer (find-file fp)))
-                          (set-buffer orig)
-                          buffer))
+                :buffer
+                (let ((orig (current-buffer))
+                      (buffer
+                       (with-current-buffer (plist-get state :stack-buffer)
+                         (let ((value (find-file-noselect filename t nil nil)))
+                           (if (listp value)
+                               (car value)
+                             value)))))
+                  (set-buffer orig)
+                  buffer))
                t)))
         ;; Calling it asynchronously is necessary for flycheck to
         ;; work properly. See
         ;; <https://github.com/flycheck/flycheck/pull/524#issuecomment-64947118>
-        (run-with-idle-timer 0 nil flycheck-callback 'finished messages)
+        (run-with-idle-timer 0 nil (plist-get state :flycheck-callback) 'finished messages)
         (message "Flycheck done."))
       :done)
      (t :done))))
