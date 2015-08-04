@@ -91,27 +91,42 @@
       (with-current-buffer (stack-mode-buffer)
         (setq buffer-read-only t)
         (cd (stack-mode-dir))
-        (setq stack-mode-queue (fifo-make))
-        (setq stack-mode-current-command nil)
-        (setq stack-mode-buffer "")
         (inferior-stack-mode)
+        (stack-mode-set-initial-command)
+        (setq stack-mode-buffer "")
         (let* ((name (stack-mode-process-name (stack-mode-name)))
                (args (append (list name
                                    nil
                                    stack-mode-proc-path
                                    "ide"
                                    "start")
-                             (checklist-read-checklist
-                              "Select packages from your Stack configuration:"
-                              (mapcar (lambda (name)
-                                        (cons name name))
-                                      (stack-mode-packages)))))
+                             (let ((choices (stack-mode-packages)))
+                               (cond ((null choices)
+                                      (error "No package targets to load in your Stack configuration!"))
+                                     ((null (cdr choices)) ;; Singleton
+                                      choices)
+                                     (t
+                                      (checklist-read-checklist
+                                       "Select packages from your Stack configuration:"
+                                       (mapcar (lambda (name)
+                                                 (cons name name))
+                                               choices)))))))
                (process (or (get-process name)
                             (progn (stack-mode-log "Starting: %S" args)
                                    (apply #'start-process
                                           args)))))
           (set-process-sentinel process 'stack-mode-sentinel)
           (set-process-filter process 'stack-mode-filter))))))
+
+(defun stack-mode-set-initial-command ()
+  "Set the initial command callback. The `stack ide` command will
+reload targets on start-up, so that's the default command we'll
+start with."
+  (setq stack-mode-current-command
+        (list :json nil
+              :data nil
+              :cont 'stack-mode-loading-callback))
+  (setq stack-mode-queue (fifo-make)))
 
 (defun stack-mode-stop ()
   "Stop the process."
@@ -190,13 +205,6 @@
                    package-name
                    package-ver)))))))
 
-(defun haskell-mode-show-type-at (&optional insert-value)
-  "Show the type of the thing at point."
-  (interactive "P")
-  (let ((ty (haskell-mode-type-at)))
-    (if insert-value
-        (message "%s" (haskell-fontify-as-mode ty 'haskell-mode)))))
-
 (defun stack-mode-info ()
   "Display the info of the thing at point."
   (interactive)
@@ -238,57 +246,57 @@
                      packageName)))))
 
 (defun stack-mode-type (&optional insert-value)
-"Display type info of thing at point."
-(interactive "P")
-(let* ((filename (buffer-file-name))
-       (module-name (haskell-guess-module-name))
-       (points (stack-mode-points))
-       (orig (point))
-       (span (stack-mode-span-from-points (car points)
-                                          (cdr points))))
-  (let* ((types (stack-contents
-                 (stack-mode-get-exp-types
-                  module-name
-                  (with-current-buffer (stack-mode-buffer)
-                    (file-relative-name filename default-directory))
-                  span)))
-         (types (mapcar #'identity types))
-         (code (buffer-substring-no-properties
-                (car points)
-                (cdr points)))
-         (type (stack-contents (car types)))
-         (ty (stack-lookup 'text type)))
-    (if insert-value
-        (let ((ident-pos (haskell-ident-pos-at-point)))
-          (cond
-           ((region-active-p)
-            (delete-region (region-beginning)
-                           (region-end))
-            (insert "(" code " :: " ty ")")
-            (goto-char (1+ orig)))
-           ((= (line-beginning-position) (car ident-pos))
-            (goto-char (line-beginning-position))
-            (insert code " :: " (haskell-fontify-as-mode ty 'haskell-mode)
-                    "\n"))
-           (t
-            (save-excursion
-              (goto-char (car ident-pos))
-              (let ((col (current-column)))
-                (save-excursion (insert "\n")
-                                (indent-to col))
-                (insert code " :: " (haskell-fontify-as-mode ty 'haskell-mode)))))))
-      (unless (null types)
-        (message
-         "%s"
-         (mapconcat (lambda (type)
-                      (haskell-fontify-as-mode
-                       (concat
-                        code
-                        " :: "
-                        (elt type 0))
-                       'haskell-mode))
-                    (subseq types 0 1)
-                    "\n")))))))
+  "Display type info of thing at point."
+  (interactive "P")
+  (let* ((filename (buffer-file-name))
+         (module-name (haskell-guess-module-name))
+         (points (stack-mode-points))
+         (orig (point))
+         (span (stack-mode-span-from-points (car points)
+                                            (cdr points))))
+    (let* ((types (stack-contents
+                   (stack-mode-get-exp-types
+                    module-name
+                    (with-current-buffer (stack-mode-buffer)
+                      (file-relative-name filename default-directory))
+                    span)))
+           (types (mapcar #'identity types))
+           (code (buffer-substring-no-properties
+                  (car points)
+                  (cdr points)))
+           (type (stack-contents (car types)))
+           (ty (stack-lookup 'text type)))
+      (if insert-value
+          (let ((ident-pos (haskell-ident-pos-at-point)))
+            (cond
+             ((region-active-p)
+              (delete-region (region-beginning)
+                             (region-end))
+              (insert "(" code " :: " ty ")")
+              (goto-char (1+ orig)))
+             ((= (line-beginning-position) (car ident-pos))
+              (goto-char (line-beginning-position))
+              (insert code " :: " (haskell-fontify-as-mode ty 'haskell-mode)
+                      "\n"))
+             (t
+              (save-excursion
+                (goto-char (car ident-pos))
+                (let ((col (current-column)))
+                  (save-excursion (insert "\n")
+                                  (indent-to col))
+                  (insert code " :: " (haskell-fontify-as-mode ty 'haskell-mode)))))))
+        (unless (null types)
+          (message
+           "%s"
+           (mapconcat (lambda (type)
+                        (haskell-fontify-as-mode
+                         (concat
+                          code
+                          " :: "
+                          (elt type 0))
+                         'haskell-mode))
+                      (subseq types 0 1)
+                      "\n")))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Process filters and sentinel
@@ -514,26 +522,6 @@ directory."
 
 (defun stack-mode-loading-callback (_ reply)
   "Callback for when loading modules."
-  (cond
-   ((assoc 'progress reply)
-    (let ((msg (stack-lookup 'parsedMsg (assoc 'progress reply)))
-          (step (stack-lookup 'step (assoc 'progress reply)))
-          (steps (stack-lookup 'numSteps (assoc 'progress reply))))
-      (message "%s %s"
-               (propertize msg 'face 'bold)
-               (propertize (format "(%d of %d)" step steps)
-                           'face 'font-lock-comment-face)))
-    :continue)
-   (t
-    (stack-mode-enqueue
-     `((tag . "RequestGetSourceErrors")
-       (contents . []))
-     nil
-     'stack-mode-get-source-errors-callback)
-    :done)))
-
-(defun stack-mode-get-source-errors-callback (_ reply)
-  "Handle the reply from getting source errors."
   (let ((tag (stack-tag reply)))
     (cond
      ((string= tag "ResponseUpdateSession")
@@ -541,8 +529,35 @@ directory."
              (tag (stack-tag contents)))
         (cond
          ((string= tag "UpdateStatusProgress")
-          (message "%s" (stack-lookup 'progressOrigMsg (stack-contents contents))))))
-      :continue)
+          (stack-mode-progress-callback _ reply)
+          :continue)
+         ((string= tag "UpdateStatusDone")
+          (stack-mode-enqueue
+           `((tag . "RequestGetSourceErrors")
+             (contents . []))
+           nil
+           'stack-mode-get-source-errors-callback)
+          :done)
+         (t :continue))))
+     (t
+      :continue))))
+
+(defun stack-mode-progress-callback (_ reply)
+  "Callback for status reports. Utilized in multiple places."
+  (let* ((contents (stack-contents reply))
+         (update (stack-contents contents))
+         (step (stack-lookup 'progressStep update))
+         (total (stack-lookup 'progressNumSteps update))
+         (msg (stack-lookup 'progressParsedMsg update)))
+    (message "[%s/%s] %s"
+             (propertize (number-to-string step) 'face 'compilation-line-number)
+             (propertize (number-to-string total) 'face 'compilation-line-number)
+             msg)))
+
+(defun stack-mode-get-source-errors-callback (_ reply)
+  "Handle the reply from getting source errors."
+  (let ((tag (stack-tag reply)))
+    (cond
      ((string= tag "ResponseGetSourceErrors")
       (let ((any-errors nil)
             (warnings 0))
