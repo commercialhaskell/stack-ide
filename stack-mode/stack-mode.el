@@ -237,8 +237,8 @@
                        "(this one)"
                      packageName)))))
 
-(defun stack-mode-type (&optional insert-value))
-"Display type info of thing at point.")
+(defun stack-mode-type (&optional insert-value)
+"Display type info of thing at point."
 (interactive "P")
 (let* ((filename (buffer-file-name))
        (module-name (haskell-guess-module-name))
