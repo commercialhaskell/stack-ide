@@ -25,6 +25,7 @@
 (require 'cl-lib)
 (require 'fifo)
 (require 'checklist)
+(require 'flycheck)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Modes
@@ -137,6 +138,15 @@ start with."
       (setq stack-mode-buffer "")
       (kill-process (stack-mode-process))
       (delete-process (stack-mode-process)))))
+
+(defun stack-mode-reset ()
+  "Reset the process."
+  (interactive)
+  (with-current-buffer (stack-mode-buffer)
+    (when (stack-mode-process)
+      (setq stack-mode-current-command nil)
+      (setq stack-mode-buffer "")
+      (setq stack-mode-queue (fifo-make)))))
 
 (defun stack-mode-restart ()
   "Restart the process with a fresh command queue."
@@ -666,5 +676,89 @@ identifier's points."
 (defun stack-lookup-contents (key object)
   "Get from a JSON object."
   (stack-contents (stack-lookup key object)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Flycheck integration
+
+(defun stack-mode-flycheck-start (checker flycheck-callback)
+  "Run a compile on demand, triggered by Flycheck."
+  (write-region (point-min) (point-max) (buffer-file-name))
+  (clear-visited-file-modtime)
+  (with-current-buffer (stack-mode-buffer)
+    (stack-mode-enqueue
+     `((tag . "RequestUpdateSession")
+       (contents . []))
+     flycheck-callback
+     'stack-mode-flycheck-callback)))
+
+(defun stack-mode-flycheck-callback (flycheck-callback reply)
+  "Callback for the flycheck loading. Once done, it will report
+  errors/warnings to CALLBACK."
+  (let ((tag (stack-tag reply)))
+    (cond
+     ((string= tag "ResponseUpdateSession")
+      (let* ((contents (stack-contents reply))
+             (tag (stack-tag contents)))
+        (cond
+         ((string= tag "UpdateStatusProgress")
+          (stack-mode-progress-callback nil reply)
+          :continue)
+         ((string= tag "UpdateStatusDone")
+          (stack-mode-enqueue
+           `((tag . "RequestGetSourceErrors")
+             (contents . []))
+           flycheck-callback
+           'stack-mode-flycheck-errors-callback)
+          :done)
+         (t :continue))))
+     (t
+      :continue))))
+
+(defun stack-mode-flycheck-errors-callback (flycheck-callback reply)
+  "Collect error messages and pass them to FLYCHECK-CALLBACK."
+  (let ((tag (stack-tag reply)))
+    (cond
+     ((string= tag "ResponseGetSourceErrors")
+      (let ((messages (list)))
+        (cl-loop
+         for item in (mapcar #'identity (stack-contents reply))
+         do (let* ((kind (stack-lookup 'errorKind item))
+                   (span (stack-contents (stack-lookup 'errorSpan item)))
+                   (msg (stack-lookup 'errorMsg item))
+                   (fp (stack-lookup 'spanFilePath span))
+                   (sl (stack-lookup 'spanFromLine span))
+                   (sc (stack-lookup 'spanFromColumn span))
+                   (el (stack-lookup 'spanToLine span))
+                   (ec (stack-lookup 'spanToColumn span)))
+              (add-to-list
+               'messages
+               (flycheck-error-new-at
+                sl
+                sc
+                (cond
+                 ((string= kind "warning")
+                  'warning)
+                 ((string= kind "error")
+                  'error)
+                 (t 'error))
+                msg
+                :checker 'stack-ide
+                :buffer (let ((orig (current-buffer))
+                              (buffer (find-file fp)))
+                          (set-buffer orig)
+                          buffer))
+               t)))
+        ;; Calling it asynchronously is necessary for flycheck to
+        ;; work properly. See
+        ;; <https://github.com/flycheck/flycheck/pull/524#issuecomment-64947118>
+        (run-with-idle-timer 0 nil flycheck-callback 'finished messages)
+        (message "Flycheck done."))
+      :done)
+     (t :done))))
+
+(flycheck-define-generic-checker 'stack-ide
+  "A syntax and type checker for Haskell using Stack's IDE support."
+  :start 'stack-mode-flycheck-start
+  :modes '(haskell-mode))
 
 (provide 'stack-mode)
