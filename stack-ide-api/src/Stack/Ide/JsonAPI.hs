@@ -30,7 +30,6 @@ module Stack.Ide.JsonAPI (
   , ResponseAnnExpType(..)
   , Ann(..)
   , CodeAnn(..)
-  , AnnSourceError(..)
   , MsgAnn(..)
   , CodeVariety(..)
   , AutocompletionSpan(..)
@@ -70,7 +69,6 @@ data Request =
     RequestUpdateSession [RequestSessionUpdate]
   -- Query
   | RequestGetSourceErrors
-  | RequestGetAnnSourceErrors
   | RequestGetLoadedModules
   | RequestGetSpanInfo SourceSpan
   | RequestGetExpTypes SourceSpan

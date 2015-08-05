@@ -25,7 +25,6 @@ import           IdeSession
 import           IdeSession.Util.Logger
 import           Prelude hiding (mod, span)
 import           Stack.Ide.AnnotateHaskell (annotateType, Autocomplete)
-import           Stack.Ide.AnnotateMessage (annotateMessage)
 import           Stack.Ide.CmdLine
 import           Stack.Ide.JsonAPI
 import           System.Environment (getEnvironment)
@@ -104,11 +103,6 @@ mainLoop clientIO session0 = do
           Right RequestGetSourceErrors -> do
             errors <- getSourceErrors session
             send $ ResponseGetSourceErrors errors
-            loop
-          Right RequestGetAnnSourceErrors -> do
-            errors <- getSourceErrors session
-            send $ ResponseGetAnnSourceErrors $
-              map (annotateMessage fileMap autoComplete) errors
             loop
           Right RequestGetLoadedModules -> do
             mods <- getLoadedModules session
