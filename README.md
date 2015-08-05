@@ -26,9 +26,28 @@ Note that you should install these tools in the same Stack LTS/Nightly
 resolver as the projects that you want to work on, so that the
 necessary packages are in scope.
 
+## Emacs
+
+There is Emacs integration provided by stack-mode in this repository.
+
+Add the following to your .emacs:
+
+``` lisp
+(add-to-list 'load-path "/path/to/stack-ide/stack-mode/")
+(require 'stack-mode)
+(add-hook 'haskell-mode-hook 'stack-mode)
+```
+
+When opening a .hs file it will figure out where your cabal package is
+and start a `stack ide` session under that package's directory.
+
+There is an example project on the `stack-mode` branch at
+[emacs-haskell-config](https://github.com/chrisdone/emacs-haskell-config/tree/stack-mode). Follow
+the instructions.
+
 ## Running manually
 
-Make sure you have a recent `stack` installed.
+Make sure you have a recent Git master version of `stack` installed.
 
 Go to a project and run:
 
