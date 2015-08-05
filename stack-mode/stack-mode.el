@@ -349,7 +349,7 @@ start with."
                                       (funcall cont data json)
                                     (error (setq error-msg e)
                                            :error))))
-                        (ecase ret
+                        (cl-ecase ret
                           (:done t)
                           (:continue nil)
                           (:error
