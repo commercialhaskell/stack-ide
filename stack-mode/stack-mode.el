@@ -196,13 +196,18 @@ start with."
   (let ((filename (buffer-file-name))
         (module-name (haskell-guess-module-name))
         (span (stack-mode-span)))
-    (let* ((infos
+    (let* ((span-info
+            (stack-mode-get-span-info
+             module-name
+             (with-current-buffer (stack-mode-buffer)
+               (file-relative-name filename default-directory))
+             span))
+           (infos
             (stack-contents
-             (stack-mode-get-span-info
-              module-name
-              (with-current-buffer (stack-mode-buffer)
-                (file-relative-name filename default-directory))
-              span)))
+             span-info))
+           (_ (when (and (vectorp infos) (= 0 (length infos)))
+                (error "Couldn't find location for this. Is the module loaded in the backend?
+Run `M-x stack-mode-list-loaded-modules' to see what's loaded.")))
            (parts (mapcar #'identity (elt infos 0)))
            (info (stack-contents (elt parts 0)))
            (span (elt parts 1))
@@ -231,6 +236,22 @@ start with."
                    (haskell-fontify-as-mode module 'haskell-mode)
                    package-name
                    package-ver)))))))
+
+(defun stack-mode-list-loaded-modules ()
+  "List the loaded modules in the backend."
+  (interactive)
+  (let ((modules
+         (stack-contents
+          (with-current-buffer (stack-mode-buffer)
+            (stack-mode-call
+             `((tag . "RequestGetLoadedModules")
+               (contents
+                . [])))))))
+    (pop-to-buffer (stack-mode-buffer))
+    (stack-mode-log "Loaded modules: %s"
+                    (mapconcat #'identity
+                               (sort (mapcar #'identity modules) #'string<)
+                               "\n"))))
 
 (defun stack-mode-info ()
   "Display the info of the thing at point."
@@ -536,6 +557,18 @@ directory."
      nil
      'stack-mode-loading-callback)))
 
+(defun stack-mode-load-buffer ()
+  "Compile the code and fetch compile errors."
+  (interactive)
+  (with-current-buffer (stack-mode-buffer)
+    (stack-mode-enqueue
+     `((tag . "RequestUpdateSession")
+       (contents . [((tag . "RequestUpdateTargets")
+                     (contents . ((tag . "TargetsInclude")
+                                  (contents . ["src/Stack/Package.hs"]))))]))
+     nil
+     'stack-mode-loading-callback)))
+
 (defun stack-mode-get-span-info (module file span)
   "Get the span info of the given location."
   (with-current-buffer (stack-mode-buffer)
@@ -625,16 +658,16 @@ directory."
                      (setq warnings (1+ warnings))))
               (when
                   stack-mode-print-error-messages
-                  (message "%s"
-                           (propertize
-                            (format "%s:(%d,%d)-(%d,%d): \n%s"
-                                    fp sl sc el ec msg)
-                            'face
-                            (cond
-                             ((string= kind "KindEarning")
-                              'compilation-warning)
-                             ((string= kind "KindError")
-                              'compilation-error)))))))
+                (message "%s"
+                         (propertize
+                          (format "%s:(%d,%d)-(%d,%d): \n%s"
+                                  fp sl sc el ec msg)
+                          'face
+                          (cond
+                           ((string= kind "KindEarning")
+                            'compilation-warning)
+                           ((string= kind "KindError")
+                            'compilation-error)))))))
         (unless any-errors
           (if (= 0 warnings)
               (message "OK.")
@@ -732,8 +765,8 @@ identifier's points."
                    (or attempt-count 0))
           (progn (stack-mode-try-start)
                  (run-at-time 1 nil 'stack-mode-flycheck-start checker flycheck-callback
-                        (current-buffer)
-                        (1+ (or attempt-count 0)))))
+                              (current-buffer)
+                              (1+ (or attempt-count 0)))))
       (write-region (point-min) (point-max) (buffer-file-name))
       (clear-visited-file-modtime)
       (with-current-buffer (stack-mode-buffer)
