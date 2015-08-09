@@ -30,8 +30,6 @@ module Stack.Ide.JsonAPI (
   , ResponseAnnExpType(..)
   , Ann(..)
   , CodeAnn(..)
-  , MsgAnn(..)
-  , CodeVariety(..)
   , VersionInfo(..)
   , Identifier
   , Targets(..)
@@ -100,7 +98,6 @@ data Response =
     -- | Nothing indicates the update completed
   | ResponseUpdateSession UpdateStatus
   | ResponseGetSourceErrors [SourceError]
-  | ResponseGetAnnSourceErrors [AnnSourceError]
   | ResponseGetLoadedModules [ModuleName]
   | ResponseGetSpanInfo [ResponseSpanInfo]
   | ResponseGetExpTypes [ResponseExpType]
@@ -129,14 +126,6 @@ data ResponseAnnExpType =
     ResponseAnnExpType (Ann CodeAnn) SourceSpan
   deriving (Show, Eq)
 
-data MsgAnn =
-    MsgAnnModule
-  | MsgAnnCode CodeVariety
-  | MsgAnnCodeAnn CodeAnn
-  | MsgAnnRefactor Text [(SourceSpan, Text)]
-  | MsgAnnCollapse
-  deriving (Show, Eq)
-
 data Ann a =
     Ann a (Ann a)
   | AnnGroup [Ann a]
@@ -145,25 +134,6 @@ data Ann a =
 
 data CodeAnn =
     CodeIdInfo IdInfo
-  deriving (Show, Eq)
-
-data AnnSourceError = AnnSourceError
-  { annErrorKind :: !SourceErrorKind
-  , annErrorSpan :: !EitherSpan
-  , annErrorMsg :: !(Ann MsgAnn)
-  }
-  deriving (Show, Eq)
-
-data CodeVariety =
-    ExpCode
-  | TypeCode
-  | UnknownCode
-  -- ^ When there isn't any id info, we don't know if it's an
-  -- expression or type.
-  | AmbiguousCode (Ann MsgAnn)
-  -- ^ When we can't tell whether the code is an expression or type,
-  -- default to yielding type id info.  The expression annotated code
-  -- is yielded in this annotation.
   deriving (Show, Eq)
 
 -- | Client version
@@ -224,10 +194,7 @@ instance FromJSON a => FromJSON (Sequenced a) where
 
 $(concat <$> mapM (deriveJSON defaultOptions)
   [ ''Ann
-  , ''AnnSourceError
   , ''CodeAnn
-  , ''CodeVariety
-  , ''MsgAnn
   , ''Request
   , ''RequestSessionUpdate
   , ''Response
