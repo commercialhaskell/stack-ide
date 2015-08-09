@@ -1,0 +1,3 @@
+[submodule "ide-backend"]
+	path = ide-backend
+	url = git://github.com/fpco/ide-backend.git
