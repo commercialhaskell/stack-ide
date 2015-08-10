@@ -9,6 +9,7 @@ This is currently a work in progress. Patches welcome.
 Install with:
 
     git clone https://github.com/commercialhaskell/stack-ide.git
+    cd stack-ide
     git submodule update --init
     stack build --copy-bins
 
