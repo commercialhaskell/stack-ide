@@ -664,7 +664,7 @@ directory."
                                   fp sl sc el ec msg)
                           'face
                           (cond
-                           ((string= kind "KindEarning")
+                           ((string= kind "KindWarning")
                             'compilation-warning)
                            ((string= kind "KindError")
                             'compilation-error)))))))
