@@ -10,7 +10,7 @@ Install with:
 
     git clone https://github.com/commercialhaskell/stack-ide.git
     cd stack-ide
-    git submodule update --init
+    git submodule update --init --recursive
     stack build --copy-bins
 
 GHC 7.10 has some GHC API bug fixes which show up in ide-backend in
