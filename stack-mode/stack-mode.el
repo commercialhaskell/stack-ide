@@ -26,6 +26,7 @@
 (require 'fifo)
 (require 'checklist)
 (require 'flycheck)
+(require 'popup)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Modes
@@ -81,6 +82,12 @@ enabled/disabled."
 (defcustom stack-mode-print-error-messages
   nil
   "Print error messages after loading the project?"
+  :type 'boolean
+  :group 'stack-mode)
+
+(defcustom stack-mode-show-popup
+  nil
+  "Show type and info messages in a popup?"
   :type 'boolean
   :group 'stack-mode)
 
@@ -284,14 +291,15 @@ Run `M-x stack-mode-list-loaded-modules' to see what's loaded.")))
          (packageName (stack-lookup 'packageKey modulePackage))
          (idType (stack-lookup 'idType prop))
          (idName (stack-lookup 'idName prop)))
-    (message
-     (concat
-      "Identifier: " (haskell-fontify-as-mode idName 'haskell-mode) "\n"
-      "Type: " (haskell-fontify-as-mode idType 'haskell-mode) "\n"
-      "Module: " (haskell-fontify-as-mode moduleName 'haskell-mode) "\n"
-      "Package: "  (if (string= "main" packageName)
-                       "(this one)"
-                     packageName)))))
+    (let ((info-string (concat
+            "Identifier: " (haskell-fontify-as-mode idName 'haskell-mode) "\n"
+            "Type: " (haskell-fontify-as-mode idType 'haskell-mode) "\n"
+            "Module: " (haskell-fontify-as-mode moduleName 'haskell-mode) "\n"
+            "Package: "  (if (string= "main" packageName)
+                             "(this one)"
+                           packageName))))
+      (cond (stack-mode-show-popup (popup-tip info-string))
+            (t (message info-string))))))
 
 (defun stack-mode-type (&optional insert-value)
   "Display type info of thing at point."
@@ -334,17 +342,18 @@ Run `M-x stack-mode-list-loaded-modules' to see what's loaded.")))
                                   (indent-to col))
                   (insert code " :: " (haskell-fontify-as-mode ty 'haskell-mode)))))))
         (unless (null types)
-          (message
-           "%s"
-           (mapconcat (lambda (type)
-                        (haskell-fontify-as-mode
-                         (concat
-                          code
-                          " :: "
-                          (elt type 0))
-                         'haskell-mode))
-                      (cl-subseq types 0 1)
-                      "\n")))))))
+          (let ((type-string (format "%s"
+            (mapconcat (lambda (type)
+                         (haskell-fontify-as-mode
+                          (concat
+                           code
+                           " :: "
+                           (elt type 0))
+                          'haskell-mode))
+                       (cl-subseq types 0 1)
+                       "\n"))))
+            (cond (stack-mode-show-popup (popup-tip type-string))
+                  (t (message type-string)))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Process filters and sentinel
