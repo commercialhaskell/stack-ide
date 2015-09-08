@@ -27,6 +27,7 @@
 (require 'checklist)
 (require 'flycheck)
 (require 'popup)
+(require 'json)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Modes
