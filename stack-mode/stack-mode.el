@@ -22,6 +22,7 @@
 ;; Imports
 
 (require 'haskell-mode)
+(require 'haskell-cabal)
 (require 'cl-lib)
 (require 'fifo)
 (require 'checklist)
