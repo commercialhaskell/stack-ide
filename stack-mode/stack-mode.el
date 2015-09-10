@@ -573,12 +573,7 @@ command."
 directory."
   (or stack-mode-name
       (setq stack-mode-name
-            (or (stack-mode-cabal-name)
-                (downcase
-                 (file-name-nondirectory
-                  (directory-file-name
-                   (file-name-directory
-                    (stack-yaml-file)))))))))
+            (stack-mode-cabal-name))))
 
 (defun stack-mode-cabal-name ()
   "Get the name of the session to use, based on the cabal file."
