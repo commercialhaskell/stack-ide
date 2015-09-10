@@ -25,7 +25,6 @@
 (require 'haskell-cabal)
 (require 'cl-lib)
 (require 'fifo)
-(require 'checklist)
 (require 'flycheck)
 (require 'json)
 
@@ -48,9 +47,13 @@ easier user experience. Disable with `stack-mode-manage-flycheck'."
             map)
   (when (buffer-file-name)
     (if stack-mode
-        (when stack-mode-manage-flycheck
-          (flycheck-mode 1)
-          (flycheck-select-checker 'stack-ide))
+        (progn (when (bound-and-true-p interactive-haskell-mode)
+                 (when (y-or-n-p "interactive-haskell-mode is enabled. Disable it?")
+                   (interactive-haskell-mode -1)))
+               (when stack-mode-manage-flycheck
+                 (flycheck-mode 1)
+                 (flycheck-select-checker 'stack-ide)
+                 (flycheck-buffer)))
       (when stack-mode-manage-flycheck
         (flycheck-mode -1)))))
 
@@ -94,6 +97,9 @@ enabled/disabled."
 
 (defvar stack-mode-queue nil)
 (make-variable-buffer-local 'stack-mode-queue)
+
+(defvar stack-mode-back-queue nil)
+(make-variable-buffer-local 'stack-mode-back-queue)
 
 (defvar stack-mode-buffer nil)
 (make-variable-buffer-local 'stack-mode-buffer)
@@ -150,9 +156,10 @@ start with."
   (setq stack-mode-current-command
         (list :json nil
               :data nil
-              :cont 'stack-mode-loading-callback))
+              :cont 'stack-mode-loading-callback
+              :label nil))
   (setq stack-mode-queue (fifo-make))
-  (message "Set initial command."))
+  (stack-mode-log "Set initial command."))
 
 (defun stack-mode-stop ()
   "Stop the process."
@@ -293,13 +300,15 @@ Run `M-x stack-mode-list-loaded-modules' to see what's loaded.")))
          (idType (stack-lookup 'idType prop))
          (idName (stack-lookup 'idName prop)))
     (let ((info-string (concat
-            "Identifier: " (haskell-fontify-as-mode idName 'haskell-mode) "\n"
-            "Type: " (haskell-fontify-as-mode idType 'haskell-mode) "\n"
-            "Module: " (haskell-fontify-as-mode moduleName 'haskell-mode) "\n"
-            "Package: "  (if (string= "main" packageName)
-                             "(this one)"
-                           packageName))))
-      (cond (stack-mode-show-popup (popup-tip info-string))
+                        "Identifier: " (haskell-fontify-as-mode idName 'haskell-mode) "\n"
+                        "Type: " (haskell-fontify-as-mode idType 'haskell-mode) "\n"
+                        "Module: " (haskell-fontify-as-mode moduleName 'haskell-mode) "\n"
+                        "Package: "  (if (string= "main" packageName)
+                                         "(this one)"
+                                       packageName))))
+      (cond (stack-mode-show-popup
+             (when (boundp popup-tip)
+               (popup-tip info-string)))
             (t (message info-string))))))
 
 (defun stack-mode-type (&optional insert-value)
@@ -344,15 +353,15 @@ Run `M-x stack-mode-list-loaded-modules' to see what's loaded.")))
                   (insert code " :: " (haskell-fontify-as-mode ty 'haskell-mode)))))))
         (unless (null types)
           (let ((type-string (format "%s"
-            (mapconcat (lambda (type)
-                         (haskell-fontify-as-mode
-                          (concat
-                           code
-                           " :: "
-                           (elt type 0))
-                          'haskell-mode))
-                       (cl-subseq types 0 1)
-                       "\n"))))
+                                     (mapconcat (lambda (type)
+                                                  (haskell-fontify-as-mode
+                                                   (concat
+                                                    code
+                                                    " :: "
+                                                    (elt type 0))
+                                                   'haskell-mode))
+                                                (cl-subseq types 0 1)
+                                                "\n"))))
             (cond (stack-mode-show-popup (popup-tip type-string))
                   (t (message type-string)))))))))
 
@@ -370,7 +379,8 @@ Run `M-x stack-mode-list-loaded-modules' to see what's loaded.")))
             (while lines
               (let ((line (pop lines)))
                 (stack-mode-log
-                 "<- %s"
+                 "[%s] <- %s"
+                 (plist-get stack-mode-current-command :label)
                  (haskell-fontify-as-mode line 'javascript-mode))
                 (when (let* ((error-msg nil)
                              (json (condition-case e
@@ -427,14 +437,34 @@ command was: %S" ret stack-mode-current-command))))
   (or stack-mode-queue
       (setq stack-mode-queue (fifo-make))))
 
-(defun stack-mode-enqueue (json data cont)
+(defun stack-mode-back-queue ()
+  "Get the FIFO back queue of this process."
+  (or stack-mode-back-queue
+      (setq stack-mode-back-queue (fifo-make))))
+
+(defun stack-mode-enqueue-front (json data cont &optional label)
   "Enqueue a JSON command to the command queue, calling (CONT
-DATA line) for each response line until CONT returns nil."
+DATA line) for each response line until CONT returns nil. This is
+the first priority queue, anything pushed to this queue will be
+run before anything in the back queue."
   (cond
    ((stack-mode-live-p)
-    (stack-mode-log "-> %s" (haskell-fontify-as-mode (json-encode json) 'javascript-mode))
+    (stack-mode-log "[%s] => %s" label (haskell-fontify-as-mode (json-encode json) 'javascript-mode))
     (fifo-push (stack-mode-queue)
-               (list :json json :data data :cont cont))
+               (list :json json :data data :cont cont :label label))
+    (stack-mode-queue-trigger))
+   (t (stack-mode-try-start))))
+
+(defun stack-mode-enqueue (json data cont &optional label)
+  "Same as `stack-mode-front', but puts it on the back
+queue. Items are only moved onto the front queue when the front
+queue is empty. This lets a command which consists of a few back
+and forth steps to continue its processing uninterrupted."
+  (cond
+   ((stack-mode-live-p)
+    (stack-mode-log "[%s] ~> %s" label (haskell-fontify-as-mode (json-encode json) 'javascript-mode))
+    (fifo-push (stack-mode-back-queue)
+               (list :json json :data data :cont cont :label label))
     (stack-mode-queue-trigger))
    (t (stack-mode-try-start))))
 
@@ -478,10 +508,24 @@ This uses `accept-process-output' internally."
 (defun stack-mode-queue-trigger ()
   "Trigger the next command in the queue if there is no current
 command."
-  (unless stack-mode-current-command
+  (if stack-mode-current-command
+      (unless (fifo-null-p (stack-mode-queue))
+        (stack-mode-log "Stack command queue is currently active, waiting ..."))
+    (when (fifo-null-p (stack-mode-queue))
+      (stack-mode-log "Command queue is now empty.")
+      (unless (fifo-null-p (stack-mode-back-queue))
+        (stack-mode-log "Pushing next item from back queue to front queue ...")
+        (fifo-push (stack-mode-queue)
+                   (fifo-pop (stack-mode-back-queue)))))
     (unless (fifo-null-p (stack-mode-queue))
       (setq stack-mode-current-command
             (fifo-pop (stack-mode-queue)))
+      (stack-mode-log
+       "[%S] -> %s"
+       (plist-get stack-mode-current-command :label)
+       (haskell-fontify-as-mode
+        (json-encode (plist-get stack-mode-current-command :json))
+        'javascript-mode))
       (process-send-string
        (stack-mode-process)
        (concat (json-encode (plist-get stack-mode-current-command :json))
@@ -623,7 +667,7 @@ directory."
           (stack-mode-progress-callback _ reply)
           :continue)
          ((string= tag "UpdateStatusDone")
-          (stack-mode-enqueue
+          (stack-mode-enqueue-front
            `((tag . "RequestGetSourceErrors")
              (contents . []))
            nil
@@ -769,23 +813,30 @@ identifier's points."
   (let ((max-attempts 2))
     (if (not (stack-mode-live-p))
         (if (> (or attempt-count 0) max-attempts)
-            (message "Stack backend isn't ready for Flycheck use. Giving up (waited %d seconds)."
-                     max-attempts)
-          (message "Stack backend isn't ready. Waiting (%d attempts) ..."
-                   (or attempt-count 0))
-          (progn (stack-mode-try-start)
-                 (run-at-time 1 nil 'stack-mode-flycheck-start checker flycheck-callback
-                              (current-buffer)
-                              (1+ (or attempt-count 0)))))
-      (write-region (point-min) (point-max) (buffer-file-name))
-      (clear-visited-file-modtime)
-      (with-current-buffer (stack-mode-buffer)
-        (stack-mode-enqueue
-         `((tag . "RequestUpdateSession")
-           (contents . []))
-         (list :flycheck-callback flycheck-callback
-               :stack-buffer (current-buffer))
-         'stack-mode-flycheck-callback)))))
+            (stack-mode-log "Stack backend isn't ready for Flycheck use. Giving up (waited %d seconds)."
+                            max-attempts)
+          (stack-mode-log "Stack backend isn't ready. Waiting (%d attempts) ..."
+                          (or attempt-count 0))
+          (progn (stack-mode-log "Flycheck tried to use the Stack backend, but the Stack backend isn't started yet. Starting it ...")
+                 (stack-mode-try-start)
+                 (run-with-idle-timer 1 nil 'stack-mode-flycheck-start checker flycheck-callback
+                                      (current-buffer)
+                                      (1+ (or attempt-count 0)))))
+      (progn (stack-mode-log "Running Flycheck with Stack backend ...")
+             (write-region (point-min) (point-max) (buffer-file-name))
+             (clear-visited-file-modtime)
+             (let ((source-buffer (current-buffer))
+                   (label (format "flycheck %s" (buffer-name (current-buffer)))))
+               (with-current-buffer (stack-mode-buffer)
+                 (stack-mode-back-enqueue
+                  `((tag . "RequestUpdateSession")
+                    (contents . []))
+                  (list :flycheck-callback flycheck-callback
+                        :stack-buffer (current-buffer)
+                        :source-buffer source-buffer
+                        :label label)
+                  'stack-mode-flycheck-callback
+                  label)))))))
 
 (defun stack-mode-flycheck-callback (state reply)
   "Callback for the flycheck loading. Once done, it will report
@@ -800,11 +851,12 @@ identifier's points."
           (stack-mode-progress-callback nil reply)
           :continue)
          ((string= tag "UpdateStatusDone")
-          (stack-mode-enqueue
+          (stack-mode-enqueue-front
            `((tag . "RequestGetSourceErrors")
              (contents . []))
            state
-           'stack-mode-flycheck-errors-callback)
+           'stack-mode-flycheck-errors-callback
+           (plist-get state :label))
           :done)
          (t :continue))))
      (t
@@ -850,10 +902,25 @@ identifier's points."
         ;; Calling it asynchronously is necessary for flycheck to
         ;; work properly. See
         ;; <https://github.com/flycheck/flycheck/pull/524#issuecomment-64947118>
-        (run-with-idle-timer 0 nil (plist-get state :flycheck-callback) 'finished messages)
+        ;;
+        ;; Also, the `stack-mode-call-in-buffer' utility is also
+        ;; needed because the reply needs to be called in the same
+        ;; buffer.
+        (run-with-idle-timer 0
+                             nil
+                             'stack-mode-call-in-buffer
+                             (plist-get state :source-buffer)
+                             (plist-get state :flycheck-callback)
+                             'finished
+                             messages)
         (message "Flycheck done."))
       :done)
      (t :done))))
+
+(defun stack-mode-call-in-buffer (buffer func &rest args)
+  "Utility function which calls FUNC in BUFFER with ARGS."
+  (with-current-buffer buffer
+    (apply func args)))
 
 (flycheck-define-generic-checker 'stack-ide
   "A syntax and type checker for Haskell using Stack's IDE support."
