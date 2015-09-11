@@ -379,8 +379,10 @@ Run `M-x stack-mode-list-loaded-modules' to see what's loaded.")))
             (while lines
               (let ((line (pop lines)))
                 (stack-mode-log
-                 "[%s] <- %s"
-                 (plist-get stack-mode-current-command :label)
+                 "%s <- %s"
+                 (if (plist-get stack-mode-current-command :label)
+                     (format "[%s]" (plist-get stack-mode-current-command :label))
+                   "")
                  (haskell-fontify-as-mode line 'javascript-mode))
                 (when (let* ((error-msg nil)
                              (json (condition-case e
@@ -823,7 +825,7 @@ identifier's points."
              (let ((source-buffer (current-buffer))
                    (label (format "flycheck %s" (buffer-name (current-buffer)))))
                (with-current-buffer (stack-mode-buffer)
-                 (stack-mode-back-enqueue
+                 (stack-mode-enqueue
                   `((tag . "RequestUpdateSession")
                     (contents . []))
                   (list :flycheck-callback flycheck-callback
