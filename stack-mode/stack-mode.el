@@ -608,17 +608,17 @@ directory."
      nil
      'stack-mode-loading-callback)))
 
-(defun stack-mode-load-buffer ()
-  "Compile the code and fetch compile errors."
-  (interactive)
-  (with-current-buffer (stack-mode-buffer)
-    (stack-mode-enqueue
-     `((tag . "RequestUpdateSession")
-       (contents . [((tag . "RequestUpdateTargets")
-                     (contents . ((tag . "TargetsInclude")
-                                  (contents . ["src/Stack/Package.hs"]))))]))
-     nil
-     'stack-mode-loading-callback)))
+;; (defun stack-mode-load-buffer ()
+;;   "Compile the code and fetch compile errors."
+;;   (interactive)
+;;   (with-current-buffer (stack-mode-buffer)
+;;     (stack-mode-enqueue
+;;      `((tag . "RequestUpdateSession")
+;;        (contents . [((tag . "RequestUpdateTargets")
+;;                      (contents . ((tag . "TargetsInclude")
+;;                                   (contents . ["src/Stack/Package.hs"]))))]))
+;;      nil
+;;      'stack-mode-loading-callback)))
 
 (defun stack-mode-get-span-info (module file span)
   "Get the span info of the given location."
