@@ -875,27 +875,27 @@ identifier's points."
                    (sc (stack-lookup 'spanFromColumn span))
                    (el (stack-lookup 'spanToLine span))
                    (ec (stack-lookup 'spanToColumn span)))
-              (add-to-list
-               'messages
-               (flycheck-error-new-at
-                sl sc
-                (cond
-                 ((string= kind "KindWarning") 'warning)
-                 ((string= kind "KindError") 'error)
-                 (t (message "kind: %s" kind)'error))
-                msg
-                :checker 'stack-ide
-                :buffer
-                (let ((orig (current-buffer))
-                      (buffer
-                       (with-current-buffer (plist-get state :stack-buffer)
-                         (let ((value (find-file-noselect filename t nil nil)))
-                           (if (listp value)
-                               (car value)
-                             value)))))
-                  (set-buffer orig)
-                  buffer))
-               t)))
+              (let ((orig (current-buffer))
+                    (buffer
+                     (with-current-buffer (plist-get state :stack-buffer)
+                       (let ((value (get-file-buffer filename)))
+                             (if (listp value)
+                                 (car value)
+                               value)))))
+                (if (not (null buffer))
+                 (add-to-list
+                  'messages
+                  (flycheck-error-new-at
+                   sl sc
+                   (cond
+                    ((string= kind "KindWarning") 'warning)
+                    ((string= kind "KindError") 'error)
+                    (t (message "kind: %s" kind)'error))
+                   msg
+                   :checker 'stack-ide
+                   :buffer buffer)
+                  t))
+                (set-buffer orig))))
         ;; Calling it asynchronously is necessary for flycheck to
         ;; work properly. See
         ;; <https://github.com/flycheck/flycheck/pull/524#issuecomment-64947118>
