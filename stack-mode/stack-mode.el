@@ -52,6 +52,7 @@ easier user experience. Disable with `stack-mode-manage-flycheck'."
                    (interactive-haskell-mode -1)))
                (when stack-mode-manage-flycheck
                  (flycheck-mode 1)
+                 (flycheck-disable-checker 'haskell-ghc)
                  (flycheck-select-checker 'stack-ide)
                  (flycheck-buffer)))
       (when stack-mode-manage-flycheck
@@ -922,6 +923,7 @@ identifier's points."
 (flycheck-define-generic-checker 'stack-ide
   "A syntax and type checker for Haskell using Stack's IDE support."
   :start 'stack-mode-flycheck-start
-  :modes '(haskell-mode))
+  :modes '(haskell-mode)
+  :next-checkers '((warning . haskell-hlint)))
 
 (provide 'stack-mode)
