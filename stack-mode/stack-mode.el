@@ -31,6 +31,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Modes
 
+;;;###autoload
 (define-minor-mode stack-mode
   "A minor mode enabling various features based on stack-ide.
 
@@ -113,7 +114,7 @@ enabled/disabled."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Interactive functions
-
+;;;###autoload
 (defun stack-mode-status ()
   "Print the status of the current stack process."
   (interactive)
@@ -125,6 +126,7 @@ enabled/disabled."
         (message "There is a stack buffer, but no Stack process."))
     (message "There is no Stack buffer.")))
 
+;;;###autoload
 (defun stack-mode-start ()
   "Start an inferior process and buffer."
   (interactive)
