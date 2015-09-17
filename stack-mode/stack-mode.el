@@ -1,6 +1,9 @@
 ;;; stack-mode.el --- A minor mode enabling various features based on stack-ide.
 
 ;; Copyright (c) 2015 Chris Done.
+
+;; URL: https://github.com/commercialhaskell/stack-ide
+;; Keywords: Haskell, stack
 ;; Package-Requires: ((haskell-mode "13.14") (cl-lib "0.5") (flycheck "0.23"))
 
 ;; This file is free software; you can redistribute it and/or modify
@@ -15,6 +18,8 @@
 
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+;;; Commentary:
 
 ;;; Code:
 
