@@ -307,9 +307,8 @@ Run `M-x stack-mode-list-loaded-modules' to see what's loaded.")))
                         "Package: "  (if (string= "main" packageName)
                                          "(this one)"
                                        packageName))))
-      (cond (stack-mode-show-popup
-             (when (boundp popup-tip)
-               (popup-tip info-string)))
+      (cond ((and stack-mode-show-popup (fboundp 'popup-tip))
+             (popup-tip info-string))
             (t (message info-string))))))
 
 (defun stack-mode-type (&optional insert-value)
@@ -363,7 +362,7 @@ Run `M-x stack-mode-list-loaded-modules' to see what's loaded.")))
                                                    'haskell-mode))
                                                 (cl-subseq types 0 1)
                                                 "\n"))))
-            (cond (stack-mode-show-popup (popup-tip type-string))
+            (cond ((and stack-mode-show-popup (fboundp 'popup-tip)) (popup-tip type-string))
                   (t (message type-string)))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
