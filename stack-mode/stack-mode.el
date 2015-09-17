@@ -1,5 +1,4 @@
-;;; stack-mode.el --- A minor mode enabling various features based on
-;;; stack-ide.
+;;; stack-mode.el --- A minor mode enabling various features based on stack-ide.
 
 ;; Copyright (c) 2015 Chris Done.
 ;; Package-Requires: ((haskell-mode "13.14") (cl-lib "0.5") (flycheck "0.23"))
