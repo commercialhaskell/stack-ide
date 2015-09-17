@@ -1,4 +1,4 @@
-;;; fifo.el --- FIFO queue.
+;;; stack-fifo.el --- FIFO queue.
 
 ;; Copyright (c) 2015 Chris Done.
 
@@ -19,11 +19,11 @@
 
 (require 'cl-lib)
 
-(defun fifo-make ()
+(defun stack-fifo-make ()
   "Make a fifo queue."
   (cons 0 nil))
 
-(defun fifo-push (q a)
+(defun stack-fifo-push (q a)
   "Push a new item onto the queue."
   (cl-assert (consp q) nil "Must be a queue.")
   (setcar q (1+ (car q)))
@@ -34,7 +34,7 @@
     (setcdr next (cons a nil)))
   q)
 
-(defun fifo-pop (q)
+(defun stack-fifo-pop (q)
   "Pop the next item on the queue."
   (cl-assert (consp q) nil "Must be a queue.")
   (cl-assert (consp (cdr q)) nil "No items to pop from queue.")
@@ -43,13 +43,14 @@
     (setcdr q (cdr (cdr q)))
     a))
 
-(defun fifo-size (q)
+(defun stack-fifo-size (q)
   "Get the size of the queue."
   (cl-assert (consp q) nil "Must be a queue.")
   (car q))
 
-(defun fifo-null-p (q)
+(defun stack-fifo-null-p (q)
   "Is the queue empty?"
-  (= (fifo-size q) 0))
+  (= (stack-fifo-size q) 0))
 
-(provide 'fifo)
+(provide 'stack-fifo)
+;;; stack-fifo.el ends here

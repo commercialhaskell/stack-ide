@@ -1,7 +1,10 @@
-;;; stack-mode.el --- A minor mode enabling various features based on
-;;; stack-ide.
+;;; stack-mode.el --- A minor mode enabling various features based on stack-ide.
 
 ;; Copyright (c) 2015 Chris Done.
+
+;; URL: https://github.com/commercialhaskell/stack-ide
+;; Keywords: Haskell, stack
+;; Package-Requires: ((haskell-mode "13.14") (cl-lib "0.5") (flycheck "0.23"))
 
 ;; This file is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -16,6 +19,8 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+;;; Commentary:
+
 ;;; Code:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -24,13 +29,14 @@
 (require 'haskell-mode)
 (require 'haskell-cabal)
 (require 'cl-lib)
-(require 'fifo)
+(require 'stack-fifo)
 (require 'flycheck)
 (require 'json)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Modes
 
+;;;###autoload
 (define-minor-mode stack-mode
   "A minor mode enabling various features based on stack-ide.
 
@@ -113,7 +119,7 @@ enabled/disabled."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Interactive functions
-
+;;;###autoload
 (defun stack-mode-status ()
   "Print the status of the current stack process."
   (interactive)
@@ -125,6 +131,7 @@ enabled/disabled."
         (message "There is a stack buffer, but no Stack process."))
     (message "There is no Stack buffer.")))
 
+;;;###autoload
 (defun stack-mode-start ()
   "Start an inferior process and buffer."
   (interactive)
@@ -159,7 +166,7 @@ start with."
               :data nil
               :cont 'stack-mode-loading-callback
               :label nil))
-  (setq stack-mode-queue (fifo-make))
+  (setq stack-mode-queue (stack-fifo-make))
   (stack-mode-log "Set initial command."))
 
 (defun stack-mode-stop ()
@@ -179,7 +186,7 @@ start with."
     (when (stack-mode-process)
       (setq stack-mode-current-command nil)
       (setq stack-mode-buffer "")
-      (setq stack-mode-queue (fifo-make)))))
+      (setq stack-mode-queue (stack-fifo-make)))))
 
 (defun stack-mode-restart ()
   "Restart the process with a fresh command queue."
@@ -437,12 +444,12 @@ command was: %S" ret stack-mode-current-command))))
 (defun stack-mode-queue ()
   "Get the FIFO queue of this process."
   (or stack-mode-queue
-      (setq stack-mode-queue (fifo-make))))
+      (setq stack-mode-queue (stack-fifo-make))))
 
 (defun stack-mode-back-queue ()
   "Get the FIFO back queue of this process."
   (or stack-mode-back-queue
-      (setq stack-mode-back-queue (fifo-make))))
+      (setq stack-mode-back-queue (stack-fifo-make))))
 
 (defun stack-mode-enqueue-front (json data cont &optional label)
   "Enqueue a JSON command to the command queue, calling (CONT
@@ -452,8 +459,8 @@ run before anything in the back queue."
   (cond
    ((stack-mode-live-p)
     (stack-mode-log "[%s] => %s" label (haskell-fontify-as-mode (json-encode json) 'javascript-mode))
-    (fifo-push (stack-mode-queue)
-               (list :json json :data data :cont cont :label label))
+    (stack-fifo-push (stack-mode-queue)
+                     (list :json json :data data :cont cont :label label))
     (stack-mode-queue-trigger))
    (t (stack-mode-try-start))))
 
@@ -465,8 +472,8 @@ and forth steps to continue its processing uninterrupted."
   (cond
    ((stack-mode-live-p)
     (stack-mode-log "[%s] ~> %s" label (haskell-fontify-as-mode (json-encode json) 'javascript-mode))
-    (fifo-push (stack-mode-back-queue)
-               (list :json json :data data :cont cont :label label))
+    (stack-fifo-push (stack-mode-back-queue)
+                     (list :json json :data data :cont cont :label label))
     (stack-mode-queue-trigger))
    (t (stack-mode-try-start))))
 
@@ -496,7 +503,7 @@ response. Returns the response."
 
 (defun stack-mode-queue-processed-p ()
   "Return t if command queue has been completely processed."
-  (and (fifo-null-p stack-mode-queue)
+  (and (stack-fifo-null-p stack-mode-queue)
        (null stack-mode-current-command)))
 
 (defun stack-mode-queue-flush ()
@@ -511,17 +518,17 @@ This uses `accept-process-output' internally."
   "Trigger the next command in the queue if there is no current
 command."
   (if stack-mode-current-command
-      (unless (fifo-null-p (stack-mode-queue))
+      (unless (stack-fifo-null-p (stack-mode-queue))
         (stack-mode-log "Stack command queue is currently active, waiting ..."))
-    (when (fifo-null-p (stack-mode-queue))
+    (when (stack-fifo-null-p (stack-mode-queue))
       (stack-mode-log "Command queue is now empty.")
-      (unless (fifo-null-p (stack-mode-back-queue))
+      (unless (stack-fifo-null-p (stack-mode-back-queue))
         (stack-mode-log "Pushing next item from back queue to front queue ...")
-        (fifo-push (stack-mode-queue)
-                   (fifo-pop (stack-mode-back-queue)))))
-    (unless (fifo-null-p (stack-mode-queue))
+        (stack-fifo-push (stack-mode-queue)
+                   (stack-fifo-pop (stack-mode-back-queue)))))
+    (unless (stack-fifo-null-p (stack-mode-queue))
       (setq stack-mode-current-command
-            (fifo-pop (stack-mode-queue)))
+            (stack-fifo-pop (stack-mode-queue)))
       (stack-mode-log
        "[%S] -> %s"
        (plist-get stack-mode-current-command :label)
@@ -926,3 +933,4 @@ identifier's points."
   :next-checkers '((warning . haskell-hlint)))
 
 (provide 'stack-mode)
+;;; stack-mode.el ends here
