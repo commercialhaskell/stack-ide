@@ -2,6 +2,7 @@
 ;;; stack-ide.
 
 ;; Copyright (c) 2015 Chris Done.
+;; Package-Requires: ((haskell-mode "13.14") (cl-lib "0.5") (flycheck "0.23"))
 
 ;; This file is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -926,3 +927,4 @@ identifier's points."
   :next-checkers '((warning . haskell-hlint)))
 
 (provide 'stack-mode)
+;;; stack-mode.el ends here
