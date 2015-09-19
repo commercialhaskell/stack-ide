@@ -526,7 +526,7 @@ command."
       (unless (stack-fifo-null-p (stack-mode-back-queue))
         (stack-mode-log "Pushing next item from back queue to front queue ...")
         (stack-fifo-push (stack-mode-queue)
-                   (stack-fifo-pop (stack-mode-back-queue)))))
+                         (stack-fifo-pop (stack-mode-back-queue)))))
     (unless (stack-fifo-null-p (stack-mode-queue))
       (setq stack-mode-current-command
             (stack-fifo-pop (stack-mode-queue)))
