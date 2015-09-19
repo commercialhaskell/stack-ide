@@ -876,7 +876,8 @@ identifier's points."
   (let ((tag (stack-tag reply)))
     (cond
      ((string= tag "ResponseGetSourceErrors")
-      (let ((messages (list)))
+      (let ((messages (list))
+            (any-errors nil))
         (cl-loop
          for item in (mapcar #'identity (stack-contents reply))
          do (let* ((kind (stack-lookup 'errorKind item))
@@ -902,28 +903,37 @@ identifier's points."
                       sl sc
                       (cond
                        ((string= kind "KindWarning") 'warning)
-                       ((string= kind "KindError") 'error)
-                       (t (message "kind: %s" kind)'error))
+                       ((string= kind "KindError")
+                        (setq any-errors t)
+                        'error)
+                       (t (setq any-errors t)
+                          (message "kind: %s" kind)
+                          'error))
                       msg
                       :checker 'stack-ide
                       :buffer buffer)
                      t)
-                  (save-excursion
-                    (pop-to-buffer (get-buffer-create "*stack-compile-error*"))
-                    (insert (propertize
-                             (format "%s:(%d,%d)-(%d,%d): \n%s"
-                                     (or filename "<unknown>")
-                                     (or sl 0)
-                                     (or sc 0)
-                                     (or el 0)
-                                     (or ec 0)
-                                     msg)
-                             'face
-                             (cond
-                              ((string= kind "KindWarning")
-                               'compilation-warning)
-                              ((string= kind "KindError")
-                               'compilation-error))))))
+                  (progn
+                    (setq any-errors t)
+                    (save-excursion
+                      (pop-to-buffer (get-buffer-create "*stack-compile-error*"))
+                      (special-mode)
+                      (let ((inhibit-read-only t))
+                        (erase-buffer)
+                        (insert (propertize
+                                 (format "%s:(%d,%d)-(%d,%d): \n%s"
+                                         (or filename "<unknown>")
+                                         (or sl 0)
+                                         (or sc 0)
+                                         (or el 0)
+                                         (or ec 0)
+                                         msg)
+                                 'face
+                                 (cond
+                                  ((string= kind "KindWarning")
+                                   'compilation-warning)
+                                  ((string= kind "KindError")
+                                   'compilation-error))))))))
                 (set-buffer orig))))
         ;; Calling it asynchronously is necessary for flycheck to
         ;; work properly. See
@@ -939,7 +949,7 @@ identifier's points."
                              (plist-get state :flycheck-callback)
                              'finished
                              messages)
-        (message "Flycheck done."))
+        (when (not any-errors) (message "OK.")))
       :done)
      (t :done))))
 
