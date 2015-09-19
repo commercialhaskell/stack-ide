@@ -711,14 +711,18 @@ directory."
 (defun stack-mode-progress-callback (_ reply)
   "Callback for status reports. Utilized in multiple places."
   (let* ((contents (stack-contents reply))
-         (update (stack-contents contents))
-         (step (stack-lookup 'progressStep update))
-         (total (stack-lookup 'progressNumSteps update))
-         (msg (stack-lookup 'progressParsedMsg update)))
-    (message "[%s/%s] %s"
-             (propertize (number-to-string step) 'face 'compilation-line-number)
-             (propertize (number-to-string total) 'face 'compilation-line-number)
-             msg)))
+         (update (stack-contents contents)))
+     (stack-mode-progress-message
+       (stack-lookup 'progressStep update)
+       (stack-lookup 'progressNumSteps update)
+       (stack-lookup 'progressParsedMsg update))))
+
+(defun stack-mode-progress-message (step total msg)
+  "Callback for progress info.  This is split off of stack-mode-progress so it can be overridden."
+  (message "[%s/%s] %s"
+           (propertize (number-to-string step) 'face 'compilation-line-number)
+           (propertize (number-to-string total) 'face 'compilation-line-number)
+           msg))
 
 (defun stack-mode-get-source-errors-callback (_ reply)
   "Handle the reply from getting source errors."
