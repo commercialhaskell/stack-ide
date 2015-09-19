@@ -553,11 +553,16 @@ command."
 
 (defun stack-mode-buffer (&optional name)
   "The inferior buffer."
-  (let ((default-directory (stack-mode-dir)))
-    (get-buffer-create
-     (stack-mode-buffer-name
-      (or name
-          (stack-mode-name))))))
+  (let ((mbuffer (get-buffer
+                  (stack-mode-buffer-name
+                   (or name
+                       (stack-mode-name))))))
+    (or mbuffer
+        (let ((default-directory (stack-mode-dir)))
+          (get-buffer-create
+           (stack-mode-buffer-name
+            (or name
+                (stack-mode-name))))))))
 
 (defun stack-mode-name-from-process (proc)
   "Get the name of the project from the process."
