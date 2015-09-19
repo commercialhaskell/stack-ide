@@ -889,24 +889,41 @@ identifier's points."
                    (ec (stack-lookup 'spanToColumn span)))
               (let ((orig (current-buffer))
                     (buffer
-                     (with-current-buffer (plist-get state :stack-buffer)
-                       (let ((value (get-file-buffer filename)))
-                             (if (listp value)
-                                 (car value)
-                               value)))))
+                     (and filename
+                          (with-current-buffer (plist-get state :stack-buffer)
+                            (let ((value (get-file-buffer filename)))
+                              (if (listp value)
+                                  (car value)
+                                value))))))
                 (if (not (null buffer))
-                 (add-to-list
-                  'messages
-                  (flycheck-error-new-at
-                   sl sc
-                   (cond
-                    ((string= kind "KindWarning") 'warning)
-                    ((string= kind "KindError") 'error)
-                    (t (message "kind: %s" kind)'error))
-                   msg
-                   :checker 'stack-ide
-                   :buffer buffer)
-                  t))
+                    (add-to-list
+                     'messages
+                     (flycheck-error-new-at
+                      sl sc
+                      (cond
+                       ((string= kind "KindWarning") 'warning)
+                       ((string= kind "KindError") 'error)
+                       (t (message "kind: %s" kind)'error))
+                      msg
+                      :checker 'stack-ide
+                      :buffer buffer)
+                     t)
+                  (save-excursion
+                    (pop-to-buffer (get-buffer-create "*stack-compile-error*"))
+                    (insert (propertize
+                             (format "%s:(%d,%d)-(%d,%d): \n%s"
+                                     (or filename "<unknown>")
+                                     (or sl 0)
+                                     (or sc 0)
+                                     (or el 0)
+                                     (or ec 0)
+                                     msg)
+                             'face
+                             (cond
+                              ((string= kind "KindWarning")
+                               'compilation-warning)
+                              ((string= kind "KindError")
+                               'compilation-error))))))
                 (set-buffer orig))))
         ;; Calling it asynchronously is necessary for flycheck to
         ;; work properly. See
