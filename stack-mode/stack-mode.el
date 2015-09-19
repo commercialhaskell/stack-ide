@@ -406,8 +406,9 @@ Run `M-x stack-mode-list-loaded-modules' to see what's loaded.")))
                            (setq stack-mode-buffer "")
                            (setq stack-mode-current-command nil)
                            (setq stack-mode-queue nil)
-                           (error "Command handler error: %S\n\nThe command queue has been cleared."
-                                  error-msg))
+                           (message "Command handler error: %S\n\nThe command queue has been cleared."
+                                    error-msg)
+                           (signal (car error-msg) (cdr error-msg)))
                           (t
                            (error "A command handler must return either :done or :continue,
 but it returned: %S
