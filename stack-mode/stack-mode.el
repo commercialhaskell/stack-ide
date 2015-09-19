@@ -731,12 +731,11 @@ directory."
                             'compilation-warning)
                            ((string= kind "KindError")
                             'compilation-error)))))))
-        (unless any-errors
-          (if (= 0 warnings)
-              (message "OK.")
-            (message (propertize "OK (%d warning%s)." 'face 'compilation-warning)
-                     warnings
-                     (if (= 1 warnings) "" "s")))))
+        (if (= 0 warnings)
+            (message "OK.")
+          (message (propertize "OK (%d warning%s)." 'face 'compilation-warning)
+                   warnings
+                   (if (= 1 warnings) "" "s"))))
       :done)
      (t :done))))
 
