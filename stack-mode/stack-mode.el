@@ -58,7 +58,6 @@ easier user experience. Disable with `stack-mode-manage-flycheck'."
                    (interactive-haskell-mode -1)))
                (when stack-mode-manage-flycheck
                  (flycheck-mode 1)
-                 (flycheck-disable-checker 'haskell-ghc)
                  (flycheck-select-checker 'stack-ide)
                  (flycheck-buffer)))
       (when stack-mode-manage-flycheck
