@@ -1,8 +1,10 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Main where
 
+import Paths_stack_ide (version)
 import Control.Monad (when)
 import Control.Monad.Logger (defaultLogStr, LoggingT(..))
 import Data.Aeson
@@ -11,8 +13,11 @@ import Data.Aeson.Types
 import Data.ByteString.Char8 (hPutStrLn)
 import Data.ByteString.Lazy.Char8 (toStrict)
 import Data.Text.Encoding (decodeUtf8)
+import Data.Version (showVersion)
+import Development.GitRev
+import Distribution.System (buildArch)
 import Stack.Ide
-import Stack.Ide.CmdLine
+import Stack.Ide.CmdLine as CmdLine
 import Stack.Ide.JsonAPI (Response(ResponseLog), Sequenced(NoSeq))
 import Stack.Ide.Util.ValueStream (newStream, nextInStream)
 import System.IO (stdin, stdout, stderr, hSetBuffering, BufferMode(..))
@@ -21,6 +26,19 @@ import System.Log.FastLogger (fromLogStr)
 main :: IO ()
 main = do
   opts <- getCommandLineOptions
+  if optVersion opts then printVersion else start opts
+
+printVersion :: IO ()
+printVersion =
+  putStrLn $ concat
+    [ "Version ", showVersion version
+    , ", Git revision ", $gitHash
+    , " (", $gitCommitCount, " commits) "
+    , show buildArch
+    ]
+
+start :: CmdLine.Options -> IO ()
+start opts = do
   input <- newStream stdin
   -- We separate JSON values in the output by newlines, so that
   -- editors have a means to split the input into separate
