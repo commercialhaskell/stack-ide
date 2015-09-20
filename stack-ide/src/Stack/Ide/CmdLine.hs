@@ -29,6 +29,7 @@ data Options = Options {
     optInitParams :: SessionInitParams
   , optConfig     :: SessionConfig
   , optVerbose    :: Bool
+  , optVersion    :: Bool
   }
 
 
@@ -50,6 +51,7 @@ parseOptions = Options
   <$> parseInitParams
   <*> parseConfig
   <*> switch (long "verbose" <> short 'v' <> help "Send log messages to client")
+  <*> switch (long "version" <> help "Print version information")
 
 {-------------------------------------------------------------------------------
   Parsers for ide-backend types

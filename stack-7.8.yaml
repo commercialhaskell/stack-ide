@@ -5,3 +5,5 @@ packages:
   - ide-backend/ide-backend-server
   - ide-backend/ide-backend-common
 resolver: lts-2.21
+extra-deps:
+  - gitrev-1.1.0
