@@ -850,7 +850,8 @@ identifier's points."
       (error "No identifier at point."))))
 
 (defun stack-mode-goto-span (span)
-  "Get buffer points from a span."
+  "Visit the file referenced by SPAN and move point to its location.
+Pushes the previous file and point onto `find-tag-marker-ring'."
   (ring-insert find-tag-marker-ring (point-marker))
   (with-current-buffer (stack-mode-buffer)
     (find-file (stack-lookup 'spanFilePath span))
