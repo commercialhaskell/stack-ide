@@ -40,20 +40,10 @@ module Stack.Ide.JsonAPI (
 import Control.Applicative
 import Data.Aeson
 import Data.Aeson.TH
-import Data.Aeson.Types
-import qualified Data.ByteString.Char8 as S8
-import qualified Data.ByteString.Lazy      as Lazy
-import qualified Data.ByteString.Lazy as L
 import qualified Data.HashMap.Strict as H
-import Data.Maybe (fromMaybe)
-import Data.Monoid
 import Data.Text (Text)
-import qualified Data.Text as T
 import qualified Data.Text as Text
-import qualified Data.Text.Encoding as T
-import IdeSession.Types.Progress
 import IdeSession.Types.Public hiding (idProp, Value)
-import Stack.Ide.JsonAPI.TH
 
 {-------------------------------------------------------------------------------
   Types

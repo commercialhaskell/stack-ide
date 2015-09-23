@@ -9,10 +9,9 @@ module Stack.Ide
     ) where
 
 import           Control.Applicative ((<$>))
-import           Control.Arrow ((***))
 import           Control.Concurrent.Async (withAsync)
 import           Control.Exception
-import           Control.Monad (join, mfilter, void)
+import           Control.Monad (void)
 import qualified Data.ByteString.Char8 as S8
 import           Data.Function
 import           Data.IORef
@@ -27,7 +26,6 @@ import           Prelude hiding (mod, span)
 import           Stack.Ide.AnnotateHaskell (annotateType, Autocomplete)
 import           Stack.Ide.CmdLine
 import           Stack.Ide.JsonAPI
-import           System.Environment (getEnvironment)
 import           System.Exit (exitWith, exitFailure)
 
 data ClientIO = ClientIO
