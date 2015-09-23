@@ -72,7 +72,8 @@ easier user experience. Disable with `stack-mode-manage-flycheck'."
             (define-key map (kbd "C-c C-k") 'stack-mode-clear)
             (define-key map (kbd "C-c C-t") 'stack-mode-type)
             (define-key map (kbd "C-c C-i") 'stack-mode-info)
-            (define-key map (kbd "C-c C-l") 'stack-mode-load)
+            (define-key map (kbd "C-c C-l") 'stack-mode-load-module)
+            (define-key map (kbd "C-c C-c") 'stack-mode-load-all-modules)
             map)
   (when (buffer-file-name)
     (if stack-mode
@@ -124,8 +125,20 @@ enabled/disabled."
   :type 'boolean
   :group 'stack-mode)
 
+(defvar stack-mode-load-type nil
+  "Dynamic variable used to configure flycheck's loading style.
+
+Can be either:
+
+* 'load-module
+* 'all-modules
+")
+
 (defvar stack-mode-queue nil)
 (make-variable-buffer-local 'stack-mode-queue)
+
+(defvar stack-mode-load-targets nil)
+(make-variable-buffer-local 'stack-mode-load-targets)
 
 (defvar stack-mode-back-queue nil)
 (make-variable-buffer-local 'stack-mode-back-queue)
@@ -228,12 +241,17 @@ start with."
     (let ((inhibit-read-only t))
       (erase-buffer))))
 
-(defun stack-mode-load ()
-  "Load the current buffer's file."
+(defun stack-mode-load-module ()
+  "Load the current buffer's module."
   (interactive)
-  (save-buffer)
-  (with-current-buffer (stack-mode-buffer)
-    (stack-mode-reload)))
+  (let ((stack-mode-load-type 'load-module))
+    (flycheck-buffer)))
+
+(defun stack-mode-load-all-modules ()
+  "Load all modules."
+  (interactive)
+  (let ((stack-mode-load-type 'all-modules))
+    (flycheck-buffer)))
 
 (defun stack-mode-goto ()
   "Go to definition of thing at point, if possible.  If the thing
@@ -573,7 +591,22 @@ command."
 
 (defun stack-mode-packages ()
   "Get packages for the Stack configuration."
-  (split-string (shell-command-to-string "stack ide packages") "\n" t))
+  (split-string (stack-mode-shell-cmd "stack ide packages") "\n" t))
+
+(defun stack-mode-load-targets ()
+  "Get load targets."
+  (unless stack-mode-load-targets
+    (setq stack-mode-load-targets
+          (split-string (stack-mode-shell-cmd (concat "stack ide load-targets " (stack-mode-name)))
+                        "\n"
+                        t)))
+  stack-mode-load-targets)
+
+(defun stack-mode-shell-cmd (line)
+  (stack-mode-log "Running process: %s" line)
+  (let ((output (shell-command-to-string line)))
+    (stack-mode-log "Output: %S" output)
+    output))
 
 (defun stack-mode-process ()
   "Get the current process."
@@ -648,18 +681,6 @@ directory."
      nil
      'stack-mode-loading-callback)))
 
-;; (defun stack-mode-load-buffer ()
-;;   "Compile the code and fetch compile errors."
-;;   (interactive)
-;;   (with-current-buffer (stack-mode-buffer)
-;;     (stack-mode-enqueue
-;;      `((tag . "RequestUpdateSession")
-;;        (contents . [((tag . "RequestUpdateTargets")
-;;                      (contents . ((tag . "TargetsInclude")
-;;                                   (contents . ["src/Stack/Package.hs"]))))]))
-;;      nil
-;;      'stack-mode-loading-callback)))
-
 (defun stack-mode-get-span-info (module file span)
   "Get the span info of the given location."
   (with-current-buffer (stack-mode-buffer)
@@ -718,10 +739,10 @@ directory."
   "Callback for status reports. Utilized in multiple places."
   (let* ((contents (stack-contents reply))
          (update (stack-contents contents)))
-     (stack-mode-progress-message
-       (stack-lookup 'progressStep update)
-       (stack-lookup 'progressNumSteps update)
-       (stack-lookup 'progressParsedMsg update))))
+    (stack-mode-progress-message
+     (stack-lookup 'progressStep update)
+     (stack-lookup 'progressNumSteps update)
+     (stack-lookup 'progressParsedMsg update))))
 
 (defun stack-mode-progress-message (step total msg)
   "Callback for progress info.  This is split off of stack-mode-progress so it can be overridden."
@@ -869,15 +890,31 @@ identifier's points."
              (let ((source-buffer (current-buffer))
                    (label (format "flycheck %s" (buffer-name (current-buffer)))))
                (with-current-buffer (stack-mode-buffer)
-                 (stack-mode-enqueue
-                  `((tag . "RequestUpdateSession")
-                    (contents . []))
-                  (list :flycheck-callback flycheck-callback
-                        :stack-buffer (current-buffer)
-                        :source-buffer source-buffer
-                        :label label)
-                  'stack-mode-flycheck-callback
-                  label)))))))
+                 (let* ((load-targets (stack-mode-load-targets))
+                        (include (list (buffer-file-name source-buffer)))
+                        (exclude load-targets)
+                        (updates
+                         (cl-ecase stack-mode-load-type
+                           (all-modules
+                            `[((tag . "RequestUpdateTargets")
+                               (contents . ((tag . "TargetsInclude")
+                                            (contents . ,load-targets))))])
+                           (t
+                            `[((tag . "RequestUpdateTargets")
+                               (contents . ((tag . "TargetsExclude")
+                                            (contents . ,exclude))))
+                              ((tag . "RequestUpdateTargets")
+                               (contents . ((tag . "TargetsInclude")
+                                            (contents . ,include))))]))))
+                   (stack-mode-enqueue
+                    `((tag . "RequestUpdateSession")
+                      (contents . ,updates))
+                    (list :flycheck-callback flycheck-callback
+                          :stack-buffer (current-buffer)
+                          :source-buffer source-buffer
+                          :label label)
+                    'stack-mode-flycheck-callback
+                    label))))))))
 
 (defun stack-mode-flycheck-callback (state reply)
   "Callback for the flycheck loading. Once done, it will report
