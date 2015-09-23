@@ -10,6 +10,7 @@
 - <kbd>C-c C-t</kbd>  - Display type info of thing at point.
 - <kbd>C-c C-i</kbd>  - Display the info of the thing at point.
 - <kbd>C-c C-l</kbd>  - Load the current buffer's file.
+- <kbd>C-c C-c</kbd>  - Load all files.
 
 `stack-mode` minor mode also integrates with Flycheck for on-the-fly
 GHC compiler error and HLint warning reporting.

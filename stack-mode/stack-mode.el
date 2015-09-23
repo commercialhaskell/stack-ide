@@ -31,6 +31,7 @@
 ;;       'C-c C-t'  - Display type info of thing at point.
 ;;       'C-c C-i'  - Display the info of the thing at point.
 ;;       'C-c C-l'  - Load the current buffer's file.
+;;       'C-c C-c'  - Load all files.
 ;;
 ;;       'stack-mode' minor mode also integrates with Flycheck for
 ;;       on-the-fly GHC compiler error and HLint warning reporting.
