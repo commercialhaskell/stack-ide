@@ -383,26 +383,28 @@ Run `M-x stack-mode-list-loaded-modules' to see what's loaded.")))
                   (car points)
                   (cdr points)))
            (type (stack-contents (car types)))
-           (ty (stack-lookup 'text type)))
+           (ty (when types
+                 (elt (elt types 0) 0))))
       (if insert-value
-          (let ((ident-pos (haskell-ident-pos-at-point)))
-            (cond
-             ((region-active-p)
-              (delete-region (region-beginning)
-                             (region-end))
-              (insert "(" code " :: " ty ")")
-              (goto-char (1+ orig)))
-             ((= (line-beginning-position) (car ident-pos))
-              (goto-char (line-beginning-position))
-              (insert code " :: " (haskell-fontify-as-mode ty 'haskell-mode)
-                      "\n"))
-             (t
-              (save-excursion
-                (goto-char (car ident-pos))
-                (let ((col (current-column)))
-                  (save-excursion (insert "\n")
-                                  (indent-to col))
-                  (insert code " :: " (haskell-fontify-as-mode ty 'haskell-mode)))))))
+          (unless (null types)
+            (let ((ident-pos (stack-mode-ident-pos-at-point)))
+              (cond
+               ((region-active-p)
+                (delete-region (region-beginning)
+                               (region-end))
+                (insert "(" code " :: " ty ")")
+                (goto-char (1+ orig)))
+               ((= (line-beginning-position) (car ident-pos))
+                (goto-char (line-beginning-position))
+                (insert code " :: " (haskell-fontify-as-mode ty 'haskell-mode)
+                        "\n"))
+               (t
+                (save-excursion
+                  (goto-char (car ident-pos))
+                  (let ((col (current-column)))
+                    (save-excursion (insert "\n")
+                                    (indent-to col))
+                    (insert code " :: " (haskell-fontify-as-mode ty 'haskell-mode))))))))
         (unless (null types)
           (let ((type-string (format "%s"
                                      (mapconcat (lambda (type)
@@ -828,7 +830,7 @@ identifier's points."
             (let ((end (search-forward-regexp "[] (){}]" (line-end-position) t 1)))
               (if end
                   (1- end)
-                  (line-end-position))))))))
+                (line-end-position))))))))
 
 (defun stack-mode-span-from-points (beg end)
   "Get the span representation for the span from BEG to END."
