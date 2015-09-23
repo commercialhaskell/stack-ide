@@ -603,10 +603,8 @@ command."
   stack-mode-load-targets)
 
 (defun stack-mode-shell-cmd (line)
-  (stack-mode-log "Running process: %s" line)
-  (let ((output (shell-command-to-string line)))
-    (stack-mode-log "Output: %S" output)
-    output))
+
+  (shell-command-to-string line))
 
 (defun stack-mode-process ()
   "Get the current process."
