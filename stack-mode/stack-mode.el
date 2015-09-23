@@ -798,9 +798,37 @@ directory."
 identifier's points."
   (if (region-active-p)
       (cons (region-beginning) (region-end))
-    (let ((ident (haskell-ident-pos-at-point)))
+    (let ((ident (stack-mode-ident-pos-at-point)))
       (cons (car ident)
             (cdr ident)))))
+
+(defun stack-mode-ident-pos-at-point ()
+  "A more robust version of `haskell-ident-pos-at-point'."
+  (or (haskell-ident-pos-at-point)
+      (stack-mode-thing-at-point)
+      (error "Couldn't figure out the identifier at point!")))
+
+(defun stack-mode-thing-at-point ()
+  "A fallback for when `haskell-ident-pos-at-point' doesn't work."
+  (cond
+   ((looking-at "[] (){}]")
+    (save-excursion
+      (let ((end (search-backward-regexp "[^] (){}]" (line-beginning-position) t 1)))
+        (when end
+          (let ((start (or (search-backward-regexp "[] (){}]" (line-beginning-position) t 1)
+                           (line-beginning-position))))
+            (cons (1+ start) (1+ end)))))))
+   ((looking-at "[^] (){}]")
+    (save-excursion
+      (cons (let ((start (search-backward-regexp "[] (){}]" (line-beginning-position) t 1)))
+              (if start
+                  (progn (forward-char 1)
+                         (1+ start))
+                (point)))
+            (let ((end (search-forward-regexp "[] (){}]" (line-end-position) t 1)))
+              (if end
+                  (1- end)
+                  (line-end-position))))))))
 
 (defun stack-mode-span-from-points (beg end)
   "Get the span representation for the span from BEG to END."
