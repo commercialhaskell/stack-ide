@@ -54,6 +54,7 @@
 (require 'stack-fifo)
 (require 'flycheck)
 (require 'json)
+(require 'etags)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Modes
@@ -235,7 +236,12 @@ start with."
     (stack-mode-reload)))
 
 (defun stack-mode-goto ()
-  "Go to definition of thing at point."
+  "Go to definition of thing at point, if possible.  If the thing
+at point is defined in another package, instead simply show the
+location (package, module, and position) at which the thing was
+defined.  If the goto actually occurs, the original point is
+pushed onto etags' `find-tag-marker-ring' so that it may be
+returned to by `pop-tag-mark'."
   (interactive)
   (let ((filename (buffer-file-name))
         (module-name (haskell-guess-module-name))
@@ -798,6 +804,7 @@ identifier's points."
 
 (defun stack-mode-goto-span (span)
   "Get buffer points from a span."
+  (ring-insert find-tag-marker-ring (point-marker))
   (with-current-buffer (stack-mode-buffer)
     (find-file (stack-lookup 'spanFilePath span))
     (goto-char (point-min))
