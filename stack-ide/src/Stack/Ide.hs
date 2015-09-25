@@ -224,6 +224,7 @@ makeSessionUpdate (RequestUpdateEnv variables) =
   updateEnv variables
 makeSessionUpdate (RequestUpdateArgs args) =
   updateArgs args
-
-{-makeSessionUpdate (RequestUpdateRelativeIncludes _) = error "FIXME: RequestUpdateRelativeIncludes"-}
-{-makeSessionUpdate (RequestUpdateCodeGeneration _) = error "FIXME: RequestUpdateCodeGeneration"-}
+makeSessionUpdate (RequestUpdateRelativeIncludes paths) =
+  updateRelativeIncludes paths
+makeSessionUpdate (RequestUpdateCodeGeneration b) =
+  updateCodeGeneration b
