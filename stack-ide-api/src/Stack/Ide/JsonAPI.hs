@@ -34,6 +34,7 @@ module Stack.Ide.JsonAPI (
   , Identifier
   , Targets(..)
   , Sequenced(..), unsequenced, withSameSeqAs
+  , ByteString64(..)
   , sliceSpans
   ) where
 
@@ -43,7 +44,10 @@ import Data.Aeson.TH
 import qualified Data.HashMap.Strict as H
 import Data.Text (Text)
 import qualified Data.Text as Text
+import qualified Data.Text.Encoding as Text
 import IdeSession.Types.Public hiding (idProp, Value)
+import Data.ByteString (ByteString)
+import qualified Data.ByteString.Base64 as B64
 
 {-------------------------------------------------------------------------------
   Types
@@ -70,14 +74,21 @@ data Request =
 
 -- | Session updates
 data RequestSessionUpdate
-  = RequestUpdateTargets Targets
-  | RequestSessionUpdate -- Simply calls updateSession with no changes to trigger a recompile.
+  = RequestSessionUpdate -- Simply calls updateSession with no changes to trigger a recompile.
+  | RequestUpdateTargets Targets
+  | RequestUpdateSourceFile FilePath ByteString64
+  | RequestUpdateSourceFileDelete FilePath
+  | RequestUpdateDataFile FilePath ByteString64
+  | RequestUpdateDataFileDelete FilePath
+  | RequestUpdateGhcOpts [String]
+  | RequestUpdateRtsOpts [String]
+  | RequestUpdateRelativeIncludes [FilePath]
+  | RequestUpdateCodeGeneration Bool
+  | RequestUpdateEnv [(String, Maybe String)]
+  | RequestUpdateArgs [String]
   deriving (Show, Eq)
 
 -- TODO:
--- RequestUpdateGhcOpts [String]
--- RequestUpdateRtsOpts [String]
--- RequestUpdateRelativeIncludes [h]
 -- RequestUpdateStdoutBufferMode
 -- RequestUpdateStderrBufferMode
 
@@ -135,21 +146,6 @@ data VersionInfo =
 
 type Identifier = Text
 
--- | No idea. Exported for client-side and server-side code.
-sliceSpans :: Int -> Text -> [(Int, Int, a)] -> [(Text, Maybe a)]
-sliceSpans _ txt _ | Text.null txt = []
-sliceSpans _ txt [] = [(txt, Nothing)]
-sliceSpans ix txt ((fr, to, x) : xs) =
-    appendNonNull before Nothing $
-    appendNonNull chunk (Just x) $
-    sliceSpans to rest' xs
-  where
-    appendNonNull t mx = if Text.null t then id else ((t, mx) :)
-    (chunk, rest') = Text.splitAt ((to - ix) - fr') rest
-    (before, rest) = Text.splitAt fr' txt
-    fr' = max 0 (fr - ix)
-
-
 -- | An extension of messages with an optional sequence code,
 --   an uninterpreted JSON value. See (#39) for motivation.
 data Sequenced a =
@@ -178,6 +174,32 @@ instance FromJSON a => FromJSON (Sequenced a) where
           HasSeq s <$> parseJSON (Object $ H.delete "seq" o)
         _ ->
           NoSeq <$> parseJSON x
+
+newtype ByteString64 = ByteString64 { unByteString64 :: ByteString }
+    deriving (Eq, Read, Show, Ord)
+instance ToJSON ByteString64 where
+    toJSON (ByteString64 bs) = toJSON (Text.decodeUtf8 $ B64.encode bs)
+instance FromJSON ByteString64 where
+    parseJSON o =
+        parseJSON o >>= either fail (return . ByteString64) . B64.decode . Text.encodeUtf8
+
+--------------------------------------------------------------------------------
+-- Misc utilities
+
+-- | Useful for slicing up annotated text. Exported for client-side and
+-- server-side code.
+sliceSpans :: Int -> Text -> [(Int, Int, a)] -> [(Text, Maybe a)]
+sliceSpans _ txt _ | Text.null txt = []
+sliceSpans _ txt [] = [(txt, Nothing)]
+sliceSpans ix txt ((fr, to, x) : xs) =
+    appendNonNull before Nothing $
+    appendNonNull chunk (Just x) $
+    sliceSpans to rest' xs
+  where
+    appendNonNull t mx = if Text.null t then id else ((t, mx) :)
+    (chunk, rest') = Text.splitAt ((to - ix) - fr') rest
+    (before, rest) = Text.splitAt fr' txt
+    fr' = max 0 (fr - ix)
 
 --------------------------------------------------------------------------------
 -- For the moment we use Aeson's built-in instance deriver

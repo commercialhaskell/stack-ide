@@ -13,6 +13,7 @@ import           Control.Concurrent.Async (withAsync)
 import           Control.Exception
 import           Control.Monad (void)
 import qualified Data.ByteString.Char8 as S8
+import qualified Data.ByteString.Lazy as LBS
 import           Data.Function
 import           Data.IORef
 import           Data.List (sortBy)
@@ -193,32 +194,26 @@ sortSpans = sortBy (on thinner fst)
                     y
 
 makeSessionUpdate :: RequestSessionUpdate -> IdeSessionUpdate
-makeSessionUpdate (RequestUpdateTargets targets) =
-  updateTargets targets
 makeSessionUpdate (RequestSessionUpdate) =
   mempty
-
--- TODO:
-{-makeSessionUpdate (RequestUpdateSourceFile filePath contents) =
-  updateSourceFile filePath contents-}
-{-makeSessionUpdate (RequestUpdateSourceFileFromFile filePath) =
-  updateSourceFileFromFile filePath-}
-{-makeSessionUpdate (RequestUpdateSourceFileDelete filePath) =
-  updateSourceFileDelete filePath-}
-{-makeSessionUpdate (RequestUpdateDataFile filePath contents) =
-  updateDataFile filePath contents-}
-{-makeSessionUpdate (RequestUpdateDataFileFromFile remoteFile localFile) =
-  updateDataFileFromFile remoteFile localFile-}
-{-makeSessionUpdate (RequestUpdateDataFileDelete filePath) =
-  updateDataFileDelete filePath-}
-{-makeSessionUpdate (RequestUpdateGhcOpts options) =
-  updateGhcOpts options-}
-{-makeSessionUpdate (RequestUpdateRtsOpts options) =
-  updateRtsOpts options-}
-{-makeSessionUpdate (RequestUpdateEnv variables) =
-  updateEnv variables-}
-{-makeSessionUpdate (RequestUpdateArgs args) =
-  updateArgs args-}
+makeSessionUpdate (RequestUpdateTargets targets) =
+  updateTargets targets
+makeSessionUpdate (RequestUpdateSourceFile filePath contents) =
+  updateSourceFile filePath (LBS.fromStrict (unByteString64 contents))
+makeSessionUpdate (RequestUpdateSourceFileDelete filePath) =
+  updateSourceFileDelete filePath
+makeSessionUpdate (RequestUpdateDataFile filePath contents) =
+  updateDataFile filePath (LBS.fromStrict (unByteString64 contents))
+makeSessionUpdate (RequestUpdateDataFileDelete filePath) =
+  updateDataFileDelete filePath
+makeSessionUpdate (RequestUpdateGhcOpts options) =
+  updateGhcOpts options
+makeSessionUpdate (RequestUpdateRtsOpts options) =
+  updateRtsOpts options
+makeSessionUpdate (RequestUpdateEnv variables) =
+  updateEnv variables
+makeSessionUpdate (RequestUpdateArgs args) =
+  updateArgs args
 
 {-makeSessionUpdate (RequestUpdateRelativeIncludes _) = error "FIXME: RequestUpdateRelativeIncludes"-}
 {-makeSessionUpdate (RequestUpdateCodeGeneration _) = error "FIXME: RequestUpdateCodeGeneration"-}
