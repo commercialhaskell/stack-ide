@@ -16,6 +16,7 @@ library
                        Stack.Ide.AnnotateHaskell
                        Stack.Ide.CmdLine
                        Stack.Ide.Util.ValueStream
+  other-modules:       Paths_stack_ide
   build-depends:       base >= 4.5  && < 5,
                        async,
                        aeson,
