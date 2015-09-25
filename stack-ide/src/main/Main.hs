@@ -6,13 +6,11 @@ module Main where
 
 import Paths_stack_ide (version)
 import Control.Monad (when)
-import Control.Monad.Logger (defaultLogStr, LoggingT(..))
 import Data.Aeson
 import Data.Aeson.Parser
 import Data.Aeson.Types
 import Data.ByteString.Char8 (hPutStrLn)
 import Data.ByteString.Lazy.Char8 (toStrict)
-import Data.Text.Encoding (decodeUtf8)
 import Data.Version (showVersion)
 import Development.GitRev
 import Distribution.System (buildArch)
@@ -21,7 +19,6 @@ import Stack.Ide.CmdLine as CmdLine
 import Stack.Ide.JsonAPI (Response(ResponseLog), Sequenced(NoSeq))
 import Stack.Ide.Util.ValueStream (newStream, nextInStream)
 import System.IO (stdin, stdout, stderr, hSetBuffering, BufferMode(..))
-import System.Log.FastLogger (fromLogStr)
 
 main :: IO ()
 main = do
@@ -54,8 +51,7 @@ start opts = do
       receiveRequest = fmap (parseEither parseJSON) $ nextInStream input
       -- Ideally this wouldn't roundtrip through Utf8 encoding, but ohwell.
       logMessage loc source level str =
-        when (optVerbose opts) $
-          sendResponse $ NoSeq $ ResponseLog $ decodeUtf8 $ fromLogStr $ defaultLogStr loc source level str
+        when (optVerbose opts) (sendLog clientIO loc source level str)
       clientIO = ClientIO {..}
 
   -- Disable buffering for interactive piping

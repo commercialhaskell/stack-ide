@@ -6,12 +6,14 @@ module Stack.Ide
     ( ClientIO(..)
     , startEmptySession
     , sendExceptions
+    , sendLog
     ) where
 
 import           Control.Applicative ((<$>))
 import           Control.Concurrent.Async (withAsync)
 import           Control.Exception
 import           Control.Monad (void)
+import           Control.Monad.Logger (Loc, LogSource, LogLevel, LogStr, defaultLogStr)
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy as LBS
 import           Data.Function
@@ -21,6 +23,7 @@ import           Data.Monoid
 import           Data.Ord
 import           Data.Text (Text)
 import qualified Data.Text as Text
+import           Data.Text.Encoding (decodeUtf8)
 import           IdeSession
 import           IdeSession.Util.Logger
 import           Prelude hiding (mod, span)
@@ -28,6 +31,7 @@ import           Stack.Ide.AnnotateHaskell (annotateType, Autocomplete)
 import           Stack.Ide.CmdLine
 import           Stack.Ide.JsonAPI
 import           System.Exit (exitWith, exitFailure)
+import           System.Log.FastLogger (fromLogStr)
 
 data ClientIO = ClientIO
     { sendResponse :: Sequenced Response -> IO ()
@@ -56,6 +60,12 @@ sendExceptions clientIO inner =
       Nothing -> do
         sendResponse clientIO $ NoSeq $ ResponseFatalError (show ex)
         exitFailure
+
+sendLog :: ClientIO -> Loc -> LogSource -> LogLevel -> LogStr -> IO ()
+sendLog clientIO loc source level str =
+  sendResponse clientIO $ NoSeq $ ResponseLog msg
+  where
+    msg = decodeUtf8 $ fromLogStr $ defaultLogStr loc source level str
 
 -- | Version of the client API
 --
