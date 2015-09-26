@@ -67,6 +67,7 @@ data Request =
   -- Run
   | RequestRun Bool ModuleName Identifier
   | RequestProcessInput String
+  | RequestProcessInterrupt
   | RequestProcessKill
   -- Misc
   | RequestShutdownSession

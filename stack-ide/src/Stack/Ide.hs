@@ -171,10 +171,16 @@ mainLoop clientIO session0 = do
               Just actions -> supplyStdin actions (S8.pack input)
               Nothing -> send ResponseNoProcessError
             loop
-          Right RequestProcessKill -> do
+          Right RequestProcessInterrupt -> do
             mprocess <- readIORef mprocessRef
             case mprocess of
               Just actions -> interrupt actions
+              Nothing -> send ResponseNoProcessError
+            loop
+          Right RequestProcessKill -> do
+            mprocess <- readIORef mprocessRef
+            case mprocess of
+              Just actions -> forceCancel actions
               Nothing -> send ResponseNoProcessError
             loop
           Right RequestShutdownSession ->
