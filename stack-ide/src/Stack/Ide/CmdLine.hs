@@ -193,7 +193,7 @@ getCommandLineOptions = execParser opts
       (mconcat [
           fullDesc
         , progDesc "Start a new session"
-        , header "ide-backend-client: JSON interface to ide-backend"
+        , header "stack-ide: JSON interface to ide-backend"
         ])
 
 {-------------------------------------------------------------------------------
