@@ -1,6 +1,6 @@
 # stack-ide
 
-Stack-based JSON interface to ide-backend
+Stack-based JSON interface to [ide-backend](https://github.com/fpco/ide-backend)
 
 This is currently a work in progress. Patches welcome.
 
