@@ -2,7 +2,24 @@
 
 Stack-based JSON interface to [ide-backend](https://github.com/fpco/ide-backend)
 
-This is currently a work in progress. Patches welcome.
+## Project status
+
+While you are certainly free to continue working on stack-ide, FP Complete is no
+longer actively working on it.  Check out the following alternatives:
+
+
+* [ghc-mod](https://github.com/kazu-yamamoto/ghc-mod)
+
+* [ghci-ng](https://github.com/chrisdone/ghci-ng)
+
+* There is also a
+  [new community project](https://github.com/haskell/haskell-ide) to work on
+  haskell ide integration, which will hopefully grow to subsume the featureset
+  and positive attributes of stack-ide.
+
+See
+[this blogpost](https://www.fpcomplete.com/blog/2015/10/new-haskell-ide-repo)
+for more info.
 
 ## Installing
 
