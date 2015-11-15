@@ -1,4 +1,4 @@
-resolver: lts-3.6
+resolver: lts-3.13
 packages:
   - stack-ide
   - stack-ide-api
