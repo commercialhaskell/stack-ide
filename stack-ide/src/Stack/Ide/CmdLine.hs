@@ -30,8 +30,9 @@ data Options = Options {
   , optConfig     :: SessionConfig
   , optVerbose    :: Bool
   , optVersion    :: Bool
-  }
-
+  } deriving Show
+deriving instance Show SessionConfig
+deriving instance Show ProgramSearchPathEntry
 
 data EmptyOptions = EmptyOptions
   deriving Show
